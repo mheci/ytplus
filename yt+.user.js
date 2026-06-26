@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      1.0.0
-// @description  YT+ makes YouTube smoother and friendlier.
+// @version      2.1.0
+// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -31,13 +31,12 @@
 // @updateURL    https://raw.githubusercontent.com/mheci/ytplus/main/yt+.user.js
 // @downloadURL  https://raw.githubusercontent.com/mheci/ytplus/main/yt+.user.js
 // ==/UserScript==
-
 (() => {
   "use strict";
   const e = "undefined" != typeof unsafeWindow ? unsafeWindow : window;
   if (e.__YTPLUS_LOADED__) return;
   e.__YTPLUS_LOADED__ = !0;
-  /* v1.3.0 fix: save pristine native references ONCE before any monkey-patching */
+
   const __pristineXHROpen__ = XMLHttpRequest.prototype.open,
     __pristineXHRSend__ = XMLHttpRequest.prototype.send,
     __pristineFetch__ = e.fetch,
@@ -135,7 +134,7 @@
           for (; e.body.firstChild; ) t.appendChild(e.body.firstChild);
           a.appendChild(t);
         } catch (e) {
-          a.textContent = n.replace(/<<[^>]*>/g, "");
+          a.textContent = n.replace(/<[^>]*>/g, "");
         }
       }
     },
@@ -143,7 +142,7 @@
       ("undefined" != typeof GM_info &&
         GM_info.script &&
         GM_info.script.version) ||
-      "1.0.0",
+      "2.1.0",
     r = "https://sponsor.ajay.app",
     o = (() => {
       try {
@@ -3082,7 +3081,7 @@
         const a = new URL(location.href);
         if (a.searchParams.get("v") !== e) return;
         (a.searchParams.set("t", String(Math.floor(t))),
-          history.replaceState(history.state, "", a.toString()));
+          e.history.replaceState(e.history.state, "", a.toString()));
       } catch (e) {}
     })(a, n);
     const m = () => {
@@ -3927,7 +3926,7 @@
         e.loadModule && e.loadModule("captions");
       } catch (e) {}
       try {
-        e.setOption &&
+        if (e.setOption) {
           e.setOption(
             "captions",
             "fontSize",
@@ -3946,6 +3945,30 @@
                         : 3;
             })(S.ccFontSize),
           );
+          e.setOption(
+            "captions",
+            "fontFamily",
+            S.ccFontFamily || "Roboto, Arial, sans-serif",
+          );
+          e.setOption("captions", "fontColor", S.ccTextColor || "#ffffff");
+          e.setOption("captions", "bgColor", S.ccBgColor || "#000000");
+          e.setOption(
+            "captions",
+            "bgOpacity",
+            Math.max(0, Math.min(100, Number(S.ccBgOpacity) || 0)) / 100,
+          );
+          e.setOption(
+            "captions",
+            "edgeStyle",
+            S.ccTextShadow === "none"
+              ? 0
+              : S.ccTextShadow === "soft"
+                ? 1
+                : S.ccTextShadow === "heavy"
+                  ? 2
+                  : 4,
+          );
+        }
       } catch (e) {}
     }
   }
@@ -4132,9 +4155,15 @@
           const e = (function (e) {
               const t = String(e || "")
                 .trim()
-                .match(/^#?([0-9a-f]{6})$/i);
-              if (!t) return [255, 255, 255];
-              const a = parseInt(t[1], 16);
+                .match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+              if (!t) return [0, 0, 0];
+              let h = t[1];
+              if (h.length === 3)
+                h = h
+                  .split("")
+                  .map((c) => c + c)
+                  .join("");
+              const a = parseInt(h, 16);
               return [(a >> 16) & 255, (a >> 8) & 255, 255 & a];
             })(S.ccBgColor),
             t = Math.max(0, Math.min(100, Number(S.ccBgOpacity) || 0)) / 100,
@@ -4231,6 +4260,13 @@
               } catch (e) {}
             (Ea(),
               Aa(),
+              (() => {
+                try {
+                  t &&
+                    "function" == typeof t.toggleSubtitlesOn &&
+                    t.toggleSubtitlesOn();
+                } catch (e) {}
+              })(),
               (a || (n && "true" === n.getAttribute("aria-pressed"))) &&
                 (Ma.lastEngagedVid = ie.videoId()));
           })();
@@ -4277,6 +4313,13 @@
           ));
       };
       (o(),
+        So("cfg.changed", ({ key }) => {
+          if (key && (key.startsWith("cc") || key.startsWith("forceCC"))) {
+            Ea();
+            Aa();
+            a();
+          }
+        }),
         e.onNav(() => {
           (ie.videoId() !== Ma.lastEngagedVid && (Ma.manualOffForVid = null),
             e.addTimeout(() => {
@@ -4674,7 +4717,9 @@
         }
       },
       settings(e) {
-        (e.appendChild(Io("Privacy mode (SHA-256 prefix)", "sbPrivacy")),
+        (e.appendChild(
+          Io("Privacy mode (hide video IDs from database server)", "sbPrivacy"),
+        ),
           e.appendChild(Io("Skip notifications", "sbToast")),
           e.appendChild(
             No(
@@ -4689,8 +4734,10 @@
           e.appendChild(
             No("Minimum votes", "sbMinVotes", 0, 100, 1, (e) => e + " votes"),
           ),
-          e.appendChild(Io("Stats HUD", "sbHud")),
-          e.appendChild(Io("Seekbar markers", "sbSeekbar")));
+          e.appendChild(Io("Show sponsorship status box on screen", "sbHud")),
+          e.appendChild(
+            Io("Show sponsorship sections on the video timeline", "sbSeekbar"),
+          ));
         const t = To("div", "ytp-sub");
         (i.forEach((e) => {
           const a = "sb_" + e.id + "_en",
@@ -4910,9 +4957,9 @@
     }),
     xa.register({
       id: "pip-button",
-      name: "Picture-in-Picture",
+      name: "Floating Pop-out Window",
       summary:
-        "Press P to pop the video out into a floating window you can move around the screen.",
+        "Press P to pop the video out into a small floating window that stays on top while you browse other tabs.",
       masterKey: "pipOn",
       keys: ["pipOn"],
       apply() {},
@@ -5208,16 +5255,16 @@
   ),
     xa.register({
       id: "custom-css",
-      name: "Custom CSS",
+      name: "Custom Styles",
       summary:
-        "Paste in your own custom styles to tweak any part of YouTube the way you want.",
+        "Add your own styling rules to customize how any part of YouTube looks.",
       masterKey: "customCSSOn",
       keys: ["customCSSOn", "customCSS"],
       apply(e) {
         S.customCSSOn && S.customCSS && e.addStyle(S.customCSS);
       },
       settings(e) {
-        e.appendChild(Ho("CSS", "customCSS", "body { }"));
+        e.appendChild(Ho("Styling rules", "customCSS", "body { }"));
       },
     }),
     xa.register({
@@ -5311,8 +5358,8 @@
                 try {
                   if (location.pathname.startsWith("/shorts")) {
                     try {
-                      (history.replaceState(null, "", "/"),
-                        window.dispatchEvent(new PopStateEvent("popstate")));
+                      (e.history.replaceState(null, "", "/"),
+                        e.dispatchEvent(new PopStateEvent("popstate")));
                     } catch (e) {
                       location.replace("/");
                     }
@@ -6469,7 +6516,7 @@
       id: "player-buttons-bundle",
       name: "Extra Player Buttons",
       summary:
-        "Add handy buttons to the player: Stop, Copy Timestamp, Copy Video Info, Open Transcript, Previous/Next Chapter, and Notes for videos and channels.",
+        "Add handy buttons to the player: Stop video, copy timestamp link, copy video details, open transcript, previous/next chapter, and take notes for videos and channels.",
       masterKey: "_bundlePlayerButtons",
       keys: [
         "stopButtonOn",
@@ -6492,10 +6539,15 @@
         ]),
       apply() {},
       settings(e) {
-        (e.appendChild(rn("Stop button (frees buffer + RAM)", "stopButtonOn")),
-          e.appendChild(rn("Copy timestamp URL", "copyTimestampButtonOn")),
+        (e.appendChild(
+          rn("Stop button (frees up memory and pauses)", "stopButtonOn"),
+        ),
+          e.appendChild(rn("Copy timestamp link", "copyTimestampButtonOn")),
           e.appendChild(
-            rn("Copy video info (title/channel/URL)", "copyVideoInfoButtonOn"),
+            rn(
+              "Copy video details (title, channel, and link)",
+              "copyVideoInfoButtonOn",
+            ),
           ),
           e.appendChild(rn("Open transcript", "openTranscriptButtonOn")),
           e.appendChild(rn("Previous / Next chapter", "chapterButtonsOn")),
@@ -6525,17 +6577,24 @@
       id: "shorts-behavior-bundle",
       name: "Shorts Behaviour",
       summary:
-        "Change how Shorts behave: open them as regular videos instead, mute them by default, or hide the comments panel.",
+        "Customize how Shorts work: open them in the standard video player instead, mute them automatically, or hide the comments panel.",
       masterKey: "_bundleShortsBehavior",
       keys: ["redirectShortsOn", "shortsAutoMuteOn", "shortsHideCommentsOn"],
       isOn: () =>
         on(["redirectShortsOn", "shortsAutoMuteOn", "shortsHideCommentsOn"]),
       apply() {},
       settings(e) {
-        (e.appendChild(rn("Redirect /shorts/ → /watch?v=", "redirectShortsOn")),
-          e.appendChild(rn("Auto-mute on /shorts/", "shortsAutoMuteOn")),
+        (e.appendChild(
+          rn("Open Shorts in the standard video player", "redirectShortsOn"),
+        ),
           e.appendChild(
-            rn("Hide Shorts comments panel", "shortsHideCommentsOn"),
+            rn("Mute videos automatically on Shorts pages", "shortsAutoMuteOn"),
+          ),
+          e.appendChild(
+            rn(
+              "Hide the comments panel on Shorts pages",
+              "shortsHideCommentsOn",
+            ),
           ));
       },
     }),
@@ -7503,7 +7562,7 @@
   }
   (xa.register({
     id: "geo-override",
-    name: "GEO Control",
+    name: "Country & Language Override",
     summary:
       "Make YouTube think you’re in a different country and language. Useful for unblocking region-restricted content or just browsing as if you were somewhere else.",
     masterKey: "geoOverrideOn",
@@ -7594,14 +7653,8 @@
           ? !pn &&
             S.geoPatchXHR &&
             ((pn = !0),
-            (yn =
-              typeof __pristineXHROpen__ !== "undefined"
-                ? __pristineXHROpen__
-                : XMLHttpRequest.prototype.open),
-            (gn =
-              typeof __pristineXHRSend__ !== "undefined"
-                ? __pristineXHRSend__
-                : XMLHttpRequest.prototype.send),
+            (yn = XMLHttpRequest.prototype.open),
+            (gn = XMLHttpRequest.prototype.send),
             (XMLHttpRequest.prototype.open = function () {
               try {
                 xn() &&
@@ -7706,7 +7759,7 @@
         e.appendChild(Io("Intercept XMLHttpRequest (advanced)", "geoPatchXHR")),
         e.appendChild(Io("Intercept sendBeacon (advanced)", "geoPatchBeacon")),
         e.appendChild(
-          Io("Override navigator.language + Intl", "geoPatchNavigator"),
+          Io("Match browser language and time formatting", "geoPatchNavigator"),
         ),
         e.appendChild(Io("Auto-reload on region change", "geoAutoReload")),
         e.appendChild(To("div", "ytp-elem-sec-title", "Actions")));
@@ -7754,9 +7807,9 @@
   }),
     xa.register({
       id: "stats-overlay",
-      name: "Stats Overlay",
+      name: "Playback Performance Overlay",
       summary:
-        "Show live frames per second, buffer status, and playback rate over the player.",
+        "Show live frames per second, streaming health, and playback speed directly over the video player.",
       masterKey: "statsOverlay",
       keys: ["statsOverlay"],
       apply(e) {
@@ -7793,9 +7846,9 @@
     }),
     xa.register({
       id: "diag-console",
-      name: "Diagnostics Console",
+      name: "Activity Monitor",
       summary:
-        "A small floating panel that shows what YT+ is doing in real time. Useful for spotting problems.",
+        "A small floating window that shows what background actions are happening in real time. Helpful for spotting issues.",
       hidden: !0,
       masterKey: "diagConsole",
       keys: ["diagConsole"],
@@ -7828,9 +7881,9 @@
     }),
     xa.register({
       id: "perf-profiler",
-      name: "Performance Profiler",
+      name: "Feature Performance Tracker",
       summary:
-        "See how much work each YT+ feature is doing so you can turn off the heavy ones on a slow computer.",
+        "See how much computer processing each feature is using, so you can turn off heavy ones on older devices.",
       masterKey: "perfProfilerOn",
       keys: ["perfProfilerOn"],
       apply(e) {
@@ -7851,13 +7904,13 @@
     const t = To(
       "div",
       "ytp-hist-note",
-      "Click any key field, then press the combo you want. Modifier keys (Ctrl/Shift/Alt/Meta) are recognized. Press the ✕ button to clear a binding (the action becomes unbound). Most action hotkeys still require the master “Hotkeys” toggle in the top-right of the dashboard.",
+      "Click any box, then press the key combination you want to use. Combinations with Ctrl, Shift, Alt, or Command are supported. Press the ✕ button to remove a shortcut. Note that keyboard shortcuts require the master “Keyboard shortcuts” switch at the top of the dashboard to be turned on.",
     );
     e.appendChild(t);
     const a = Oo(
       "Reset all to defaults",
       () => {
-        confirm("Reset every hotkey to its default?") &&
+        e.confirm("Reset every hotkey to its default?") &&
           (Ta("hotkeyMap", {}), Hn(e));
       },
       "ytp-danger",
@@ -7937,7 +7990,7 @@
   }
   (xa.register({
     id: "hotkey-customization",
-    name: "Custom Shortcuts",
+    name: "Custom Keyboard Shortcuts",
     summary:
       "Change any YT+ keyboard shortcut. Press the keys you want and YT+ records them. Conflicts are flagged automatically.",
     masterKey: "hotkeyOptIn",
@@ -7949,9 +8002,9 @@
   }),
     xa.register({
       id: "session-replay",
-      name: "Session Replay",
+      name: "Click & Navigation Recorder",
       summary:
-        "Save an anonymous record of where you click and where you navigate, just on your own machine.",
+        "Keep a local record of where you click and navigate during your session, stored securely on your own computer.",
       masterKey: "sessionReplay",
       keys: ["sessionReplay"],
       apply(e) {
@@ -7977,9 +8030,9 @@
     }),
     xa.register({
       id: "api-explorer",
-      name: "API Explorer",
+      name: "Developer Player Control",
       summary:
-        "Make YouTube’s player available to developer tools as window.YTPlus._api.",
+        "Allow external tools and browser developer consoles to directly interact with the YouTube video player.",
       hidden: !0,
       masterKey: "apiExplorer",
       keys: ["apiExplorer", "apiExplorerMutations"],
@@ -8009,7 +8062,12 @@
           } catch (e) {}
       },
       settings(e) {
-        e.appendChild(Io("Allow mutations", "apiExplorerMutations"));
+        e.appendChild(
+          Io(
+            "Allow external tools to modify player settings",
+            "apiExplorerMutations",
+          ),
+        );
       },
     }));
   const Dn = 36e5;
@@ -8078,10 +8136,7 @@
     303: "1080p",
     304: "1440p",
     305: "2160p",
-    315: "2160p60",
     308: "1440p60",
-    271: "1440p",
-    272: "2160p",
     278: "144p",
     242: "240p",
     243: "360p",
@@ -8386,7 +8441,7 @@
       l = Math.max(1, Math.ceil(c / s)),
       p = [];
     for (let e = 0; e < s; e++) {
-      const t = i + e * l,
+      const t = Math.min(d, i + e * l),
         a = Math.min(d, t + l - 1);
       p.push({ from: t, to: a, down: 0, up: 0 });
     }
@@ -8591,14 +8646,8 @@
             })),
           !Wn &&
             S.netMonitorPatchXHR &&
-            ((Wn =
-              typeof __pristineXHROpen__ !== "undefined"
-                ? __pristineXHROpen__
-                : XMLHttpRequest.prototype.open),
-            (Un =
-              typeof __pristineXHRSend__ !== "undefined"
-                ? __pristineXHRSend__
-                : XMLHttpRequest.prototype.send),
+            ((Wn = XMLHttpRequest.prototype.open),
+            (Un = XMLHttpRequest.prototype.send),
             (XMLHttpRequest.prototype.open = function (e, t) {
               try {
                 ((this.__ytpNetURL = t), (this.__ytpNetHost = Xn(t)));
@@ -8660,11 +8709,15 @@
       (e.appendChild(
         Io("Show a small data badge in the corner", "netMonitorBadge"),
       ),
-        e.appendChild(Io("Count network requests", "netMonitorPatchFetch")),
         e.appendChild(
-          Io("Count older-style network requests", "netMonitorPatchXHR"),
+          Io("Include standard network requests", "netMonitorPatchFetch"),
         ),
-        e.appendChild(Io("Count tracking pings", "netMonitorPatchBeacon")),
+        e.appendChild(
+          Io("Include legacy network requests", "netMonitorPatchXHR"),
+        ),
+        e.appendChild(
+          Io("Include background activity updates", "netMonitorPatchBeacon"),
+        ),
         e.appendChild(
           Ro("Show usage for", "netMonitorRange", {
             hour: "Last hour",
@@ -8681,9 +8734,11 @@
             "netQualityAttribOn",
           ),
         ),
-        e.appendChild(Io("Monthly bandwidth budget + alerts", "netBudgetOn")),
         e.appendChild(
-          No("Budget cap", "netBudgetGB", 1, 500, 1, (e) => e + " GB"),
+          Io("Set a monthly data budget and alert me when near", "netBudgetOn"),
+        ),
+        e.appendChild(
+          No("Monthly data limit", "netBudgetGB", 1, 500, 1, (e) => e + " GB"),
         ));
       const t = To("div", "ytp-net-panel");
       e.appendChild(t);
@@ -8874,7 +8929,7 @@
             Oo(
               "Clear all history",
               async () => {
-                confirm(
+                e.confirm(
                   "Clear all the data usage history? This can’t be undone.",
                 ) &&
                   (await rr(), pe("Data usage cleared.", 1800, "success"), a());
@@ -8886,7 +8941,7 @@
         const s = To(
           "div",
           "ytp-hist-note",
-          "Bytes are captured from fetch / XHR / sendBeacon hooks plus PerformanceObserver resource timings, scoped to YouTube hosts (youtube.com, ytimg.com, googlevideo.com, ggpht.com, youtu.be). Data is bucketed per hour in IndexedDB and persists across sessions until you press Clear all history.",
+          "Data usage is measured directly from background video loading and network requests on YouTube servers. This information is saved securely on your own computer and stays available until you press Clear all history.",
         );
         t.appendChild(s);
       };
@@ -8923,9 +8978,9 @@
     }),
     xa.register({
       id: "privacy-shield",
-      name: "Privacy Shield",
+      name: "Private Mode",
       summary:
-        "A single switch that stops any YT+ feature from reading network or usage info while it’s on.",
+        "A single master switch that stops any feature from logging your watch history or measuring data usage while it is turned on.",
       masterKey: "privacyShieldOn",
       keys: ["privacyShieldOn"],
       apply() {},
@@ -8986,7 +9041,7 @@
       hidden: !0,
       name: "Stop Button",
       summary:
-        "Adds a Stop button next to Play/Pause. Stops the video, rewinds to the start, and frees up memory. Press Shift+S to use it from the keyboard.",
+        "Adds a Stop button next to Play/Pause. Stops the video, rewinds to the start, and frees up system memory. Press Shift+S to use it from the keyboard.",
       masterKey: "stopButtonOn",
       keys: ["stopButtonOn"],
       apply(e) {
@@ -9118,9 +9173,9 @@
     }),
     xa.register({
       id: "auto-expand-desc",
-      name: "Expand Description Automatically",
+      name: "Auto-Expand Description",
       summary:
-        'Automatically expands the video description ("...more") on watch pages.',
+        "Automatically expand the description box below videos so you don\'t have to click \'...more\'.",
       masterKey: "autoExpandDescOn",
       keys: ["autoExpandDescOn"],
       apply(e) {
@@ -9916,10 +9971,24 @@
           }),
         ),
           e.appendChild(
-            No("Long  ≥", "longVideoMinSec", 300, 14400, 60, (e) => ce(e)),
+            No(
+              "Long video threshold (seconds)",
+              "longVideoMinSec",
+              300,
+              14400,
+              60,
+              (e) => ce(e),
+            ),
           ),
           e.appendChild(
-            No("Short ≤", "shortVideoMaxSec", 5, 300, 5, (e) => ce(e)),
+            No(
+              "Short video threshold (seconds)",
+              "shortVideoMaxSec",
+              5,
+              300,
+              5,
+              (e) => ce(e),
+            ),
           ));
       },
     }),
@@ -13246,6 +13315,9 @@
   let Ur = null,
     Kr = [],
     Yr = !1;
+  function _overhaulBuildCSS() {
+    return "";
+  }
   function Gr() {
     try {
       const e = document.head || document.documentElement;
@@ -14521,7 +14593,7 @@
       })();
       (t.appendChild(To("div", "ytp-lbl", "Detected mode: " + a)),
         t.appendChild(To("div", "ytp-elem-sec-title", "Extras")),
-        t.appendChild(Io("Turn on theme extras", "themeOverhaulOn")),
+        t.appendChild(Io("Turn on advanced theme styling", "themeOverhaulOn")),
         t.appendChild(
           No("Accent color", "themeAccentHue", 0, 359, 1, (e) => e + "°"),
         ));
@@ -15036,7 +15108,10 @@
     },
     settings(e) {
       (e.appendChild(
-        Io("Show Most-Replayed heatmap (orange)", "unifiedHeatmapShowReplays"),
+        Io(
+          "Show most-replayed section graph (orange)",
+          "unifiedHeatmapShowReplays",
+        ),
       ),
         e.appendChild(
           Io(
@@ -15045,7 +15120,7 @@
           ),
         ),
         e.appendChild(
-          Io("Show chapter ticks (white)", "unifiedHeatmapShowChapters"),
+          Io("Show chapter dividers (white)", "unifiedHeatmapShowChapters"),
         ),
         e.appendChild(Eo([Oo("Re-render now", no, "primary")])));
     },
@@ -15054,9 +15129,9 @@
     co = -1;
   xa.register({
     id: "sb-submit",
-    name: "SponsorBlock Submit",
+    name: "Submit Sponsorship Segments",
     summary:
-      "Help the community by marking sponsor segments and submitting them. Choose a category like Sponsor, Self-promo, Intro, or Outro.",
+      "Help the community by marking sponsorship sections and sharing them. Choose categories like Sponsor, Self-promo, Intro, or Outro.",
     masterKey: "sbSubmitOn",
     keys: ["sbSubmitOn", "sbSubmitUserId"],
     apply() {},
@@ -15245,7 +15320,7 @@
               To(
                 "div",
                 "ytp-hist-note",
-                "Submissions go to sponsor.ajay.app. A persistent userID is generated locally on first submit and stored in cfg.sbSubmitUserId — share it with the SponsorBlock community if you become a regular contributor. Duplicate segments return HTTP 409; rate-limit/ban is HTTP 403.",
+                "Submitted segments are sent to the community database. A unique contributor ID is created automatically and saved in your settings. If a section has already been submitted by someone else, or if your submissions are limited, a message will let you know.",
               ),
             ),
             p());
@@ -15370,13 +15445,16 @@
       (e.appendChild(
         No("Height", "audioWaveformHeight", 4, 40, 1, (e) => e + "px"),
       ),
-        e.appendChild(_o("Color (hex)", "audioWaveformColor")));
+        e.appendChild(
+          _o("Waveform color (hex code or name)", "audioWaveformColor"),
+        ));
     },
   }),
     xa.register({
       id: "block-yt-ai",
-      name: "Hide YouTube AI Stuff",
-      summary: "Hide YouTube’s AI summary, AI search, and chatbot panels.",
+      name: "Hide YouTube AI Features",
+      summary:
+        "Remove YouTube\'s artificial intelligence summaries, AI search buttons, and chatbot panels.",
       masterKey: "blockYTAIOn",
       keys: ["blockYTAIOn"],
       apply(e) {
@@ -17607,9 +17685,9 @@
   }
   (xa.register({
     id: "elements-control",
-    name: "Elements Control",
+    name: "Hide Page Elements",
     summary:
-      "Hide any UI element site-wide. Quick presets and per-element toggles with live preview.",
+      "Hide unwanted buttons, banners, or sections across YouTube. Choose from quick presets or pick individual items to hide with a live preview.",
     masterKey: "elementsControlOn",
     keys: ["elementsControlOn", "elementsControlHidden"],
     apply(e) {
@@ -17782,8 +17860,9 @@
   }),
     xa.register({
       id: "remote-selectors",
-      name: "Remote Selector Sandbox",
-      summary: "SHA-256-verified selector pack.",
+      name: "Remote Rule Manager",
+      summary:
+        "Load custom element hiding rules from a trusted online source, verified for security.",
       masterKey: "remoteSelectorsOn",
       keys: ["remoteSelectorsOn", "remoteSelectorsURL", "remoteSelectorsSHA"],
       async apply(e) {
@@ -17823,8 +17902,10 @@
           }
       },
       settings(e) {
-        (e.appendChild(_o("Pack URL", "remoteSelectorsURL")),
-          e.appendChild(_o("SHA-256 hex", "remoteSelectorsSHA")));
+        (e.appendChild(_o("Rule list online link", "remoteSelectorsURL")),
+          e.appendChild(
+            _o("Security verification code", "remoteSelectorsSHA"),
+          ));
       },
     }),
     Object.freeze(dn),
@@ -18791,25 +18872,21 @@
         url: location.href,
         ts: Date.now(),
         cfg: Object.assign({}, S),
-        features: xa
-          .list()
-          .map((e) => ({
-            id: e.id,
-            on:
-              "function" == typeof e.isOn
-                ? !!e.isOn()
-                : "string" == typeof S[e.masterKey]
-                  ? S[e.masterKey] && "off" !== S[e.masterKey]
-                  : !!S[e.masterKey],
-          })),
+        features: xa.list().map((e) => ({
+          id: e.id,
+          on:
+            "function" == typeof e.isOn
+              ? !!e.isOn()
+              : "string" == typeof S[e.masterKey]
+                ? S[e.masterKey] && "off" !== S[e.masterKey]
+                : !!S[e.masterKey],
+        })),
         sbStats: { saved: rt, skips: ot, segments: tt.length },
         logs: y().slice(-100),
       }),
     },
   };
-  try {
-    Object.freeze(ti);
-  } catch (e) {}
+
   try {
     Object.defineProperty(e, "YTPlus", {
       value: ti,

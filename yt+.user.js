@@ -13951,9 +13951,6 @@
     Yr = !1;
     function _overhaulBuildCSS() {
     if (!S.themeGlassOverhaulOn) return "";
-    const _ty = S.themeFxAccentGradient
-      ? "inset 0 1px 0 rgba(255,255,255,.06), 0 6px 22px rgba(0,0,0,.35)"
-      : "0 6px 22px rgba(0,0,0,.35)";
     const _ease = S.themeFxReducedMotion ? "none" : "all .18s ease-out";
     return [
       // Masthead, sidebar, drawer, app background

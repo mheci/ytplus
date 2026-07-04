@@ -1319,23 +1319,97 @@
   }
   function De(e, t) {
     return new Promise((a) => {
-      const n = Date.now() + (t || 3e3),
-        r = () => {
-          if (ie.videoId() !== e) return void a(null);
-          const t = (function (e) {
-            return {
-              videoId: e,
-              title: ie.title() || "",
-              channel: ie.channel() || "",
-              channelId: Ne() || "",
-              thumbnail: ie.thumb(e, "mqdefault"),
-              duration: _e(),
-            };
-          })(e);
-          (t.title && t.channel) || Date.now() >= n ? a(t) : setTimeout(r, 200);
-        };
+      const n = Date.now() + (t || 3e3);
+      // Snapshot of the last captured data. Returned on nav-away or timeout
+      // so the consumer can still save whatever was captured before the
+      // user left the page (instead of throwing it all away).
+      let lastSnap = null;
+      const r = () => {
+        if (ie.videoId() !== e) return void a(lastSnap);
+        const t = (function (e) {
+          return {
+            videoId: e,
+            title: ie.title() || "",
+            channel: ie.channel() || "",
+            channelId: Ne() || "",
+            thumbnail: ie.thumb(e, "mqdefault"),
+            duration: _e(),
+          };
+        })(e);
+        lastSnap = t;
+        (t.title && t.channel) || Date.now() >= n ? a(t) : setTimeout(r, 200);
+      };
       r();
     });
+  }
+  // Background metadata backfill using the YouTube oEmbed endpoint. Used
+  // when a history record has empty title/channel because the user never
+  // opened the watch page long enough for De() to capture the metadata.
+  // The endpoint is on www.youtube.com which is already in the @connect
+  // allowlist and the he() function whitelists it.
+  const _oembedInFlight = new Set();
+  async function _oembedFetch(e) {
+    if (!e || _oembedInFlight.has(e)) return null;
+    _oembedInFlight.add(e);
+    try {
+      const r = await he(
+        "https://www.youtube.com/oembed?url=" +
+          encodeURIComponent("https://www.youtube.com/watch?v=" + e) +
+          "&format=json",
+      );
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (!j || !j.title) return null;
+      return {
+        videoId: e,
+        title: j.title || "",
+        channel: j.author_name || "",
+        channelId: "",
+        thumbnail: j.thumbnail_url || ie.thumb(e, "hqdefault"),
+        duration: 0,
+      };
+    } catch (e) {
+      return null;
+    } finally {
+      _oembedInFlight.delete(e);
+    }
+  }
+  // Scan history for records with empty title/channel and backfill them
+  // one at a time. Resolves when all are done (or attempted).
+  async function _backfillMetadata() {
+    if (!S.sessionRestoreOn) return;
+    try {
+      const list = await Ie();
+      // Sort most-recently-watched first so the dashboard shows real data
+      // for the records the user is most likely to look at.
+      const need = list
+        .filter((x) => x && x.videoId && (!x.title || !x.channel))
+        .sort((a, b) => (b.lastWatched || 0) - (a.lastWatched || 0))
+        .slice(0, 20);
+      if (!need.length) return;
+      // Limit concurrent requests to avoid hammering the endpoint
+      for (const r of need) {
+        if (!_oembedInFlight.has(r.videoId)) {
+          const data = await _oembedFetch(r.videoId);
+          if (data) {
+            const cur = await Ee(r.videoId);
+            if (cur) {
+              let n = !1;
+              if (!cur.title && data.title) ((cur.title = data.title), (n = !0));
+              if (!cur.channel && data.channel) ((cur.channel = data.channel), (n = !0));
+              if (!cur.thumbnail && data.thumbnail) ((cur.thumbnail = data.thumbnail), (n = !0));
+              if (n) {
+                await Be(cur);
+                if (cur.thumbnail) We(cur.videoId, cur.thumbnail).catch(() => {});
+                g.emit("history.updated", { videoId: cur.videoId });
+              }
+            }
+          }
+        }
+        // Small delay between requests
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    } catch (e) {}
   }
   function qe(e, t) {
     if (!e) return !1;
@@ -1367,15 +1441,21 @@
   async function je(e) {
     if (!e) return null;
     try {
-      if (Ve.has(e)) return Ve.get(e);
+      if (Ve.has(e)) {
+        // LRU: re-insert to move this entry to the end (most recently used)
+        const u = Ve.get(e);
+        Ve.delete(e);
+        return (Ve.set(e, u), u);
+      }
       const t = await v("thumbCache", e);
       if (!t || !t.blob) return null;
       if (Ve.size > 24) {
-        const e = Ve.keys().next().value;
+        // Evict the oldest entry (first key in insertion order = LRU)
+        const e2 = Ve.keys().next().value;
         try {
-          URL.revokeObjectURL(Ve.get(e));
+          URL.revokeObjectURL(Ve.get(e2));
         } catch (e) {}
-        Ve.delete(e);
+        Ve.delete(e2);
       }
       const a = URL.createObjectURL(t.blob);
       return (Ve.set(e, a), a);
@@ -1497,7 +1577,10 @@
       a.thumbnail && We(e, a.thumbnail),
       He(a) ||
         De(e, 3e3).then(async (t) => {
-          if (!t || ie.videoId() !== e) return;
+          // De() now returns its last captured snapshot on nav-away, so
+          // we still save whatever partial data was captured before the
+          // user left the page (instead of throwing it all away).
+          if (!t) return;
           const a = await Ee(e);
           if (!a) return;
           let n = !1;
@@ -1860,23 +1943,23 @@
       a.thumbnail && We(e, a.thumbnail),
       g.emit("history.updated", { videoId: e, forced: !0 }),
       He(a) ||
-        ie.videoId() !== e ||
-        De(e, 3e3).then(async (t) => {
-          if (!t) return;
-          const a = await Ee(e);
-          if (!a) return;
-          let n = !1;
-          ((a.title && a.title !== e) ||
-            (t.title && ((a.title = t.title), (n = !0))),
-            !a.channel && t.channel && ((a.channel = t.channel), (n = !0)),
-            !a.channelId &&
-              t.channelId &&
-              ((a.channelId = t.channelId), (n = !0)),
-            n &&
-              (await Be(a),
-              a.thumbnail && We(e, a.thumbnail),
-              g.emit("history.updated", { videoId: e })));
-        }),
+        (ie.videoId() === e &&
+          De(e, 3e3).then(async (t) => {
+            if (!t) return;
+            const a = await Ee(e);
+            if (!a) return;
+            let n = !1;
+            ((a.title && a.title !== e) ||
+              (t.title && ((a.title = t.title), (n = !0))),
+              !a.channel && t.channel && ((a.channel = t.channel), (n = !0)),
+              !a.channelId &&
+                t.channelId &&
+                ((a.channelId = t.channelId), (n = !0)),
+              n &&
+                (await Be(a),
+                a.thumbnail && We(e, a.thumbnail),
+                g.emit("history.updated", { videoId: e })));
+          })),
       a
     );
   }
@@ -5540,6 +5623,11 @@
             const d = To("div", "ytp-rowb");
             async function c() {
               o.replaceChildren(To("div", "ytp-hist-loading", "Loading…"));
+              // Kick off a background backfill of any records with empty
+              // title/channel. Updates are emitted as "history.updated"
+              // which re-runs this function, so the cards fill in as the
+              // oembed responses arrive.
+              _backfillMetadata().catch(() => {});
               const e = (qo.query || "").trim().toLowerCase(),
                 t = await Ie(),
                 a = e
@@ -19198,17 +19286,28 @@
       i = To("div", "ytp-hcard" + (r ? " done" : "")),
       d = To("div", "ytp-hthumb"),
       c = t.thumbnail || ie.thumb(t.videoId, "mqdefault");
-    ((d.style.backgroundImage = "url('" + c + "')"),
+    // Prefer the cached blob URL synchronously when available. The in-memory
+    // Ve map is checked first (no async hop), which avoids the previous
+    // flicker of showing the YouTube CDN thumbnail first then swapping to
+    // the cached blob a frame later.
+    const _veCached = Ve.get(t.videoId);
+    if (_veCached) {
+      d.style.backgroundImage = "url('" + _veCached + "')";
+    } else {
+      d.style.backgroundImage = "url('" + c + "')";
       je(t.videoId)
         .then((e) => {
-          e
-            ? (d.style.backgroundImage = "url('" + e + "')")
-            : We(t.videoId, c).catch(() => {});
+          if (e && d.style.backgroundImage.indexOf(_veCached || "blob:") === -1) {
+            d.style.backgroundImage = "url('" + e + "')";
+          } else if (!e) {
+            We(t.videoId, c).catch(() => {});
+          }
         })
-        .catch(() => {}),
-      r
-        ? d.appendChild(To("div", "ytp-hbadge done", "Done"))
-        : o && d.appendChild(To("div", "ytp-hbadge res", ce(t.lastPosition))));
+        .catch(() => {});
+    }
+    (r
+      ? d.appendChild(To("div", "ytp-hbadge done", "Done"))
+      : o && d.appendChild(To("div", "ytp-hbadge res", ce(t.lastPosition))));
     const s = To("div", "ytp-hinfo");
     (s.appendChild(To("div", "ytp-htitle", t.title || t.videoId)),
       s.appendChild(To("div", "ytp-hchan", t.channel || "Unknown")));

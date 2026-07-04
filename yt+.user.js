@@ -32,7 +32,7 @@
 // @icon         https://raw.githubusercontent.com/mheci/ytplus/main/icon.png
 // @noframes
 // @updateURL    https://raw.githubusercontent.com/mheci/ytplus/main/yt+.meta.js
-// @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.4/yt%2B.user.js
+// @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.5/yt%2B.user.js
 // ==/UserScript==
 (() => {
   "use strict";

@@ -31,7 +31,7 @@
 // @connect      objects.githubusercontent.com
 // @icon         https://raw.githubusercontent.com/mheci/ytplus/main/icon.png
 // @noframes
-// @updateURL    https://github.com/mheci/ytplus/releases/download/v3.0.3/yt%2B.meta.js
+// @updateURL    https://raw.githubusercontent.com/mheci/ytplus/main/yt+.meta.js
 // @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.3/yt%2B.user.js
 // ==/UserScript==
 (() => {

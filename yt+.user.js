@@ -1667,11 +1667,20 @@
                   l.style.cssText = "display:flex;gap:6px;flex-shrink:0;align-items:center";
                   l.appendChild(
                     p("Resume", !0, () => {
-                      (t(), Ze());
+                      // Clear the awaiting-resume gate BEFORE calling t(), so
+                      // that the t.play() fallback inside t() (used when the
+                      // YouTube player API isn't available) isn't suppressed
+                      // by the HTMLMediaElement.prototype.play override.
+                      Ze();
+                      try { t(); } catch (e) {}
                     }),
                   );
                   l.appendChild(
                     p("Start over", !1, () => {
+                      // Clear the awaiting-resume gate BEFORE calling play(),
+                      // otherwise the HTMLMediaElement.prototype.play override
+                      // (installed by Ke()) would suppress the call.
+                      Ze();
                       try {
                         const e = ie.el();
                         if (e) {
@@ -1679,7 +1688,6 @@
                           if (e.paused) e.play && e.play().catch(() => {});
                         }
                       } catch (e) {}
-                      Ze();
                     }),
                   );
                   const closeBtn = p("×", !1, () => Ze());

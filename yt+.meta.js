@@ -28,6 +28,6 @@
 // @connect      ggpht.com
 // @icon         https://raw.githubusercontent.com/mheci/ytplus/main/icon.png
 // @noframes
-// @updateURL    https://raw.githubusercontent.com/mheci/ytplus/main/yt+.meta.js
-// @downloadURL  https://raw.githubusercontent.com/mheci/ytplus/main/yt+.user.js
+// @updateURL    https://github.com/mheci/ytplus/releases/download/v3.0.3/yt%2B.meta.js
+// @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.3/yt%2B.user.js
 // ==/UserScript==

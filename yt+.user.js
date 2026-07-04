@@ -26,10 +26,13 @@
 // @connect      googlevideo.com
 // @connect      ytimg.com
 // @connect      ggpht.com
+// @connect      api.github.com
+// @connect      raw.githubusercontent.com
+// @connect      objects.githubusercontent.com
 // @icon         https://raw.githubusercontent.com/mheci/ytplus/main/icon.png
 // @noframes
-// @updateURL    https://raw.githubusercontent.com/mheci/ytplus/main/yt+.meta.js
-// @downloadURL  https://raw.githubusercontent.com/mheci/ytplus/main/yt+.user.js
+// @updateURL    https://github.com/mheci/ytplus/releases/download/v3.0.3/yt%2B.meta.js
+// @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.3/yt%2B.user.js
 // ==/UserScript==
 (() => {
   "use strict";
@@ -743,6 +746,62 @@
         "short" === S.highlightVideoLengthMode ||
         "both" === S.highlightVideoLengthMode));
     for (const e of E) delete S[e];
+  }
+  function Fu(e) {
+    const t = (() => {
+      try { return (GM_info && GM_info.script && String(GM_info.script.version)) || "0.0.0"; }
+      catch (_) { return "0.0.0"; }
+    })();
+    const a = (a) => {
+      const b = String(a || "0.0.0").replace(/^v/i, "").split(".").map((n) => parseInt(n, 10) || 0);
+      while (b.length < 3) b.push(0);
+      return b;
+    };
+    const n = a(t);
+    const r = a("999.999.999");
+    const o = (a, b) => { for (let i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1; } return 0; };
+    const showResult = (latestTag, htmlUrl) => {
+      const latest = a(latestTag);
+      const cmp = o(latest, n);
+      if (cmp <= 0) {
+        pe("YT+ is up to date (" + t + ").", 2400, "success");
+      } else {
+        pe("YT+ " + latestTag + " available (you have " + t + "). Open the release page.", 3600, "info");
+        try { window.open(htmlUrl, "_blank", "noopener"); } catch (_) {}
+      }
+    };
+    const onDone = (ok, payload, errMsg) => {
+      if (!ok) { pe("Update check failed: " + (errMsg || "network error"), 3000, "error"); return; }
+      try {
+        const j = (typeof payload === "string") ? JSON.parse(payload) : payload;
+        if (j && j.tag_name) { showResult(j.tag_name, j.html_url || "https://github.com/mheci/ytplus/releases/latest"); return; }
+        pe("Update check: no release found.", 2400, "info");
+      } catch (e2) {
+        pe("Update check: bad response.", 2400, "error");
+      }
+    };
+    try {
+      if (e) pe("Checking for updates...", 1800, "info");
+      if (typeof GM_xmlhttpRequest === "function") {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url: "https://api.github.com/repos/mheci/ytplus/releases/latest",
+          headers: { "Accept": "application/vnd.github+json" },
+          onload: (r) => onDone(r && r.status >= 200 && r.status < 300, r && r.responseText, r && r.statusText),
+          onerror: (r) => onDone(false, null, (r && r.error) || "network error"),
+          ontimeout: () => onDone(false, null, "timeout"),
+        });
+      } else if (typeof fetch === "function") {
+        fetch("https://api.github.com/repos/mheci/ytplus/releases/latest", { headers: { "Accept": "application/vnd.github+json" } })
+          .then((r) => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
+          .then((j) => onDone(true, j))
+          .catch((e2) => onDone(false, null, e2 && e2.message));
+      } else {
+        pe("Update check unavailable (no HTTP API).", 2200, "info");
+      }
+    } catch (e2) {
+      pe("Update check failed: " + (e2 && e2.message), 3000, "error");
+    }
   }
   function z() {
     const e = [],

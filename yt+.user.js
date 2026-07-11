@@ -235,13 +235,6 @@
         adMute: !1,
         adSpeed: !1,
         hideBannerAds: !1,
-        volumeBoost: !1,
-        volumeGain: 1.5,
-        defaultVolume: 0,
-        defaultVolumeOn: !1,
-        audioNormalize: !1,
-        scrollVolume: !1,
-        scrollVolumeStep: 5,
         sponsorblockOn: !1,
         sbServer: r,
         sbPrivacy: !0,
@@ -325,9 +318,6 @@
         chapterListOn: !1,
         commentSearchOn: !1,
         heatmapForceOn: !1,
-        audioWaveformOn: !1,
-        audioWaveformHeight: 12,
-        audioWaveformColor: "#3ea6ff",
         blockYTAIOn: !1,
         elementsControlOn: !1,
         elementsControlHidden: {},
@@ -1199,60 +1189,6 @@
           });
         })
       : fetch(e, t);
-  }
-  const me = new WeakMap();
-  function ye(t) {
-    if (!t) return null;
-    if (me.has(t)) return me.get(t);
-    try {
-      const a = e.AudioContext || e.webkitAudioContext;
-      if (!a) return null;
-      const n = new a(),
-        r = n.createMediaElementSource(t),
-        o = n.createGain();
-      ((o.gain.value = 1), r.connect(o), o.connect(n.destination));
-      const i = { ac: n, src: r, sink: o, stages: new Map() };
-      return (me.set(t, i), i);
-    } catch (e) {
-      return (h("audio init", e), null);
-    }
-  }
-  function ge(e, t, a) {
-    const n = ye(e);
-    if (n) {
-      if (n.stages.has(t))
-        try {
-          n.stages.get(t).disconnect();
-        } catch (e) {}
-      (n.stages.set(t, a), be(n));
-    }
-  }
-  function fe(e, t) {
-    const a = me.get(e);
-    if (a && a.stages.has(t)) {
-      try {
-        a.stages.get(t).disconnect();
-      } catch (e) {}
-      (a.stages.delete(t), be(a));
-    }
-  }
-  function be(e) {
-    try {
-      e.src.disconnect();
-    } catch (e) {}
-    let t = e.src;
-    for (const a of e.stages.values()) {
-      try {
-        a.disconnect();
-      } catch (e) {}
-      try {
-        t.connect(a);
-      } catch (e) {}
-      t = a;
-    }
-    try {
-      t.connect(e.sink);
-    } catch (e) {}
   }
   let ve = 0,
     ke = null,
@@ -5315,165 +5251,6 @@
       settings() {},
     }),
     xa.register({
-      id: "default-volume",
-      name: "Default Volume",
-      summary:
-        "Set the default playback volume for every video. Useful if YouTube's default 100% is too loud or too quiet.",
-      masterKey: "defaultVolumeOn",
-      keys: ["defaultVolumeOn", "defaultVolume"],
-      apply(e) {
-        if (!S.defaultVolumeOn) return;
-        const t = () => {
-          const a = ie.el();
-          if (!a) return;
-          const n = Math.max(0, Math.min(100, Number(S.defaultVolume) || 0)) / 100;
-          if (Math.abs((a.volume || 0) - n) > 0.005) {
-            try {
-              (a.volume = n),
-                a.muted && n > 0 && (a.muted = !1);
-            } catch (e) {}
-          }
-        };
-        (t(),
-          e.onNav(t),
-          e.addListener(window, "yt-player-updated", t),
-          // 'loadstart' is a <video> event, not a window event. Listen on
-          // the document so the user's current video picks up the change
-          // when it transitions to a new src.
-          e.addListener(document, "play", t, !0),
-          Yt["default-volume"].push(t));
-        // Re-apply when the user changes the volume slider or toggles
-        // the feature, so the current video picks up the new value.
-        So("cfg.changed", ({ key }) => {
-          if (key === "defaultVolume" || key === "defaultVolumeOn") t();
-        });
-      },
-      settings(e) {
-        (e.appendChild(
-          Io("Set a default volume for every video", "defaultVolumeOn"),
-        ),
-          e.appendChild(
-            No("Volume", "defaultVolume", 0, 100, 5, (e) => e + "%"),
-          ));
-      },
-    }),
-    xa.register({
-      id: "volume-boost",
-      name: "Volume Boost",
-      summary:
-        "Make the video louder than YouTube allows on its own. Up to 10× the normal max.",
-      masterKey: "volumeBoost",
-      keys: ["volumeBoost", "volumeGain"],
-      apply(e) {
-        if (!S.volumeBoost) {
-          const e = ie.el();
-          return void (e && fe(e, "boost"));
-        }
-        const t = () => {
-          const e = ie.el();
-          if (!e) return;
-          const t = ye(e);
-          if (!t) return;
-          let a = t.stages.get("boost");
-          (a || ((a = t.ac.createGain()), ge(e, "boost", a)),
-            (a.gain.value = Math.max(
-              1,
-              Math.min(10, Number(S.volumeGain) || 1),
-            )));
-        };
-        (t(),
-          e.onNav(() => e.addTimeout(t, 1500)),
-          Yt["volume-boost"].push(() => {
-            const e = ie.el();
-            e && fe(e, "boost");
-          }));
-      },
-      settings(e) {
-        e.appendChild(
-          No("Gain", "volumeGain", 1, 10, 0.1, (e) => e.toFixed(1) + "x"),
-        );
-      },
-    }),
-    xa.register({
-      id: "audio-normalize",
-      name: "Audio Normalize",
-      summary:
-        "Levels out loud and quiet parts so the volume stays consistent.",
-      masterKey: "audioNormalize",
-      keys: ["audioNormalize"],
-      apply(e) {
-        if (!S.audioNormalize) {
-          const e = ie.el();
-          return void (e && fe(e, "norm"));
-        }
-        const t = () => {
-          const e = ie.el();
-          if (!e) return;
-          const t = ye(e);
-          if (!t || t.stages.has("norm")) return;
-          const a = t.ac.createDynamicsCompressor();
-          ((a.threshold.value = -24),
-            (a.knee.value = 30),
-            (a.ratio.value = 12),
-            (a.attack.value = 0.003),
-            (a.release.value = 0.25),
-            ge(e, "norm", a));
-        };
-        (t(),
-          e.onNav(() => e.addTimeout(t, 1500)),
-          Yt["audio-normalize"].push(() => {
-            const e = ie.el();
-            e && fe(e, "norm");
-          }));
-      },
-      settings() {},
-    }),
-    xa.register({
-      id: "scroll-volume",
-      name: "Scroll-Wheel Volume",
-      summary:
-        "Hover over the player and scroll your mouse wheel to change volume.",
-      masterKey: "scrollVolume",
-      keys: ["scrollVolume", "scrollVolumeStep"],
-      apply(e) {
-        S.scrollVolume &&
-          e.addListener(
-            document,
-            "wheel",
-            (e) => {
-              const t = ie.api();
-              if (!t) return;
-              const a = t.getBoundingClientRect();
-              if (
-                !a.width ||
-                e.clientX < a.left ||
-                e.clientX > a.right ||
-                e.clientY < a.top ||
-                e.clientY > a.bottom
-              )
-                return;
-              e.preventDefault();
-              const n = ie.el();
-              if (!n) return;
-              const r = (Number(S.scrollVolumeStep) || 5) / 100,
-                o = Math.max(
-                  0,
-                  Math.min(1, n.volume + (e.deltaY < 0 ? r : -r)),
-                );
-              ((n.volume = o), (n.muted = 0 === o));
-              try {
-                t.setVolume && t.setVolume(Math.round(100 * o));
-              } catch (e) {}
-              pe("Volume " + Math.round(100 * o) + "%", 700, "info");
-            },
-            { passive: !1, capture: !1 },
-          );
-      },
-      settings(e) {
-        e.appendChild(No("Step", "scrollVolumeStep", 1, 20, 1, (e) => e + "%"));
-      },
-    }),
-    xa.register({
       id: "sponsorblock",
       name: "SponsorBlock",
       summary:
@@ -7328,49 +7105,6 @@
         e.appendChild(Ao([["Mark this channel now", nn]])));
     },
   }),
-    xa.register({
-      id: "player-buttons-bundle",
-      name: "Extra Player Buttons",
-      summary:
-        "Add handy buttons to the player: Stop video, copy timestamp link, copy video details, open transcript, previous/next chapter, and take notes for videos and channels.",
-      masterKey: "_bundlePlayerButtons",
-      keys: [
-        "stopButtonOn",
-        "copyTimestampButtonOn",
-        "copyVideoInfoButtonOn",
-        "openTranscriptButtonOn",
-        "chapterButtonsOn",
-        "videoNotesOn",
-        "channelNotesOn",
-      ],
-      isOn: () =>
-        on([
-          "stopButtonOn",
-          "copyTimestampButtonOn",
-          "copyVideoInfoButtonOn",
-          "openTranscriptButtonOn",
-          "chapterButtonsOn",
-          "videoNotesOn",
-          "channelNotesOn",
-        ]),
-      apply() {},
-      settings(e) {
-        (e.appendChild(
-          rn("Stop button (frees up memory and pauses)", "stopButtonOn"),
-        ),
-          e.appendChild(rn("Copy timestamp link", "copyTimestampButtonOn")),
-          e.appendChild(
-            rn(
-              "Copy video details (title, channel, and link)",
-              "copyVideoInfoButtonOn",
-            ),
-          ),
-          e.appendChild(rn("Open transcript", "openTranscriptButtonOn")),
-          e.appendChild(rn("Previous / Next chapter", "chapterButtonsOn")),
-          e.appendChild(rn("Video notes", "videoNotesOn")),
-          e.appendChild(rn("Channel notes", "channelNotesOn")));
-      },
-    }),
     xa.register({
       id: "feed-card-filters-bundle",
       name: "Feed Card Filters",
@@ -16183,130 +15917,7 @@
         })(t));
     },
   });
-  let so = null,
-    lo = null,
-    po = 0,
-    uo = null;
-  function ho() {
-    if (po) {
-      try {
-        cancelAnimationFrame(po);
-      } catch (e) {}
-      try {
-        clearTimeout(po);
-      } catch (e) {}
-      po = 0;
-    }
-    if (lo) {
-      try {
-        lo.remove();
-      } catch (e) {}
-      lo = null;
-    }
-    if (so) {
-      const e = ie.el();
-      if (e)
-        try {
-          fe(e, "wf-analyser");
-        } catch (e) {}
-    }
-    ((so = null), (uo = null));
-  }
-  function mo() {
-    const e = ie.el();
-    if (!e) return !1;
-    const t =
-      document.querySelector(".ytp-progress-bar") ||
-      document.querySelector(".ytp-progress-list");
-    if (!t) return !1;
-    const a = ye(e);
-    if (!a) return !1;
-    if (
-      (so ||
-        ((so = a.ac.createAnalyser()),
-        (so.fftSize = 256),
-        (so.smoothingTimeConstant = 0.85),
-        ge(e, "wf-analyser", so),
-        (uo = new Uint8Array(so.frequencyBinCount))),
-      !lo)
-    ) {
-      ((lo = document.createElement("canvas")), (lo.id = "ytp-wf-canvas"));
-      const e = Math.max(4, Math.min(40, Number(S.audioWaveformHeight) || 12));
-      lo.style.cssText =
-        "position:absolute;left:0;right:0;bottom:-" +
-        e +
-        "px;width:100%;height:" +
-        e +
-        "px;pointer-events:none;z-index:33";
-      try {
-        "static" === getComputedStyle(t).position &&
-          (t.style.position = "relative");
-      } catch (e) {}
-      (t.appendChild(lo), (lo.width = 800), (lo.height = 2 * e));
-    }
-    return !0;
-  }
-  let yo = 0;
-  function go() {
-    if (!S.audioWaveformOn) return void ho();
-    if (!((so && lo && document.body.contains(lo)) || mo()))
-      return void (po = requestAnimationFrame(go));
-    if (document.hidden || _a()) return void (po = setTimeout(go, 400));
-    const e = ie.el();
-    if (!e || e.paused) return void (po = setTimeout(go, 250));
-    const t = performance.now(),
-      a = Xt.batteryLow ? 10 : Xt.cpuConstrained ? 15 : 24;
-    if (t - yo < 1e3 / a) po = requestAnimationFrame(go);
-    else {
-      yo = t;
-      try {
-        so.getByteFrequencyData(uo);
-        const e = lo.getContext("2d", { alpha: !0, desynchronized: !0 }),
-          t = lo.width,
-          a = lo.height;
-        (e.clearRect(0, 0, t, a),
-          (e.fillStyle = S.audioWaveformColor || "#3ea6ff"));
-        const n = uo.length,
-          r = t / n;
-        for (let t = 0; t < n; t++) {
-          const n = (uo[t] / 255) * a;
-          e.fillRect(t * r, a - n, Math.max(1, r - 0.5), n);
-        }
-      } catch (e) {}
-      po = requestAnimationFrame(go);
-    }
-  }
-  (xa.register({
-    id: "audio-waveform",
-    name: "Audio Waveform Overlay",
-    summary: "Show a slim live audio waveform under the seekbar.",
-    masterKey: "audioWaveformOn",
-    keys: ["audioWaveformOn", "audioWaveformHeight", "audioWaveformColor"],
-    apply(e) {
-      S.audioWaveformOn
-        ? (ho(),
-          mo(),
-          (po = requestAnimationFrame(go)),
-          e.onNav(() => {
-            ho();
-            for (const t of [800, 2e3])
-              e.addTimeout(() => {
-                (mo(), po || (po = requestAnimationFrame(go)));
-              }, t);
-          }),
-          Yt["audio-waveform"].push(ho))
-        : ho();
-    },
-    settings(e) {
-      (e.appendChild(
-        No("Height", "audioWaveformHeight", 4, 40, 1, (e) => e + "px"),
-      ),
-        e.appendChild(
-          _o("Waveform color (hex code or name)", "audioWaveformColor"),
-        ));
-    },
-  }),
-    xa.register({
+  xa.register({
       id: "block-yt-ai",
       name: "Hide YouTube AI Features",
       summary:
@@ -16329,7 +15940,7 @@
           );
       },
       settings() {},
-    }));
+    });
   const fo = [
     {
       group: "Masthead (top bar)",

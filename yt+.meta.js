@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.8
+// @version      3.0.9
 // @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
@@ -28,6 +28,6 @@
 // @connect      ggpht.com
 // @icon         https://raw.githubusercontent.com/mheci/ytplus/main/icon.png
 // @noframes
-// @updateURL    https://github.com/mheci/ytplus/releases/download/v3.0.8/yt%2B.meta.js
-// @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.8/yt%2B.user.js
+// @updateURL    https://github.com/mheci/ytplus/releases/download/v3.0.9/yt%2B.meta.js
+// @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.9/yt%2B.user.js
 // ==/UserScript==

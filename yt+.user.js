@@ -257,6 +257,26 @@
         droppedFrameResetOnNav: !0,
         videoStatsOn: !1,
         videoStatsPos: "bl",
+        blockNumberSeekOn: !1,
+        defaultOriginalAudioOn: !1,
+        restoreFsScrollOn: !1,
+        removeRedirectUrlsOn: !1,
+        shortenShareUrlOn: !1,
+        skipPausedContinueOn: !1,
+        logoToSubsOn: !1,
+        defaultChannelTab: "featured",
+        blurThumbnailsOn: !1,
+        blurThumbnailsAmount: 12,
+        hideTopLiveGamesOn: !1,
+        openSettingsOnHoverOn: !1,
+        autoRecoverOn: !1,
+        bgPlayersPauseOn: !1,
+        forwardRewindOn: !1,
+        forwardRewindSec: 10,
+        reversePlaylistOn: !1,
+        flipVideoOn: !1,
+        flipVideoH: !1,
+        flipVideoV: !1,
         bookmarksOn: !1,
         pipOn: !1,
         screenshotOn: !1,
@@ -9149,6 +9169,639 @@
               "Shows current resolution, bitrate, codec, color, HDR status, and quality label from the YouTube player. The mini-graph below tracks bitrate over the last 60 seconds.",
             ),
           ));
+      },
+    }),
+    xa.register({
+      id: "block-number-seek",
+      name: "Block Number Key Seeking",
+      summary:
+        "Prevents pressing 0-9 from jumping the video to a percentage of its duration. Useful if you keep accidentally pressing number keys while typing comments.",
+      masterKey: "blockNumberSeekOn",
+      keys: ["blockNumberSeekOn"],
+      apply(e) {
+        if (!S.blockNumberSeekOn) return;
+        const t = (n) => {
+          if (!n.key || n.ctrlKey || n.metaKey || n.altKey) return;
+          const a = n.target;
+          if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable)) return;
+          if (n.key < "0" || n.key > "9") return;
+          const i = ie.el && ie.el();
+          if (!i || i.paused) return;
+          n.preventDefault();
+          n.stopPropagation();
+        };
+        e.addListener(document, "keydown", t, !0);
+        Yt["block-number-seek"].push(() => {});
+      },
+      settings(e) {
+        e.appendChild(Io("Block number keys (0-9) from seeking the video", "blockNumberSeekOn"));
+      },
+    }),
+    xa.register({
+      id: "default-audio-track",
+      name: "Default to Original Audio Track",
+      summary:
+        "Always switch the audio track to the original language, even if YouTube picked a different track by default.",
+      masterKey: "defaultOriginalAudioOn",
+      keys: ["defaultOriginalAudioOn"],
+      apply(e) {
+        if (!S.defaultOriginalAudioOn) return;
+        const t = () => {
+          const a = ie.api && ie.api();
+          if (!a) return;
+          if (typeof a.getAvailableAudioTracks !== "function") return;
+          try {
+            const r = a.getAvailableAudioTracks();
+            if (!r || !r.length) return;
+            const o = r.find((t) => t.id && /orig/i.test(t.id || "")) || r[0];
+            if (o && o.id && a.setAudioTrack) {
+              a.setAudioTrack(o, true);
+              pe("Audio: " + (o.label || "original"), 1500, "info");
+            }
+          } catch (e) {}
+        };
+        (t(),
+          e.onNav(() => e.addTimeout(t, 1500)),
+          Yt["default-audio-track"].push(() => {}));
+      },
+      settings(e) {
+        e.appendChild(Io("Default to original audio track", "defaultOriginalAudioOn"));
+      },
+    }),
+    xa.register({
+      id: "restore-fullscreen-scrolling",
+      name: "Allow Scrolling in Fullscreen",
+      summary:
+        "Re-enables mouse-wheel scrolling while the player is in fullscreen mode. YouTube normally locks the page scroll when the player is fullscreen.",
+      masterKey: "restoreFsScrollOn",
+      keys: ["restoreFsScrollOn"],
+      apply(e) {
+        if (!S.restoreFsScrollOn) return;
+        const t = document.createElement("style");
+        (t.id = "ytp-restore-fs-scroll"),
+          (t.textContent =
+            ".html5-video-player:-webkit-full-screen{overflow:auto!important}.html5-video-player:fullscreen{overflow:auto!important}"),
+          (document.head || document.documentElement).appendChild(t);
+        Yt["restore-fullscreen-scrolling"].push(() => {
+          try {
+            t.remove();
+          } catch (e) {}
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Allow scrolling when the player is in fullscreen", "restoreFsScrollOn"));
+      },
+    }),
+    xa.register({
+      id: "remove-redirect-urls",
+      name: "Skip YouTube /redirect URLs",
+      summary:
+        "Replaces YouTube's /redirect URLs (used in description links and annotations) with the real destination, so you don't have to click through the warning interstitial.",
+      masterKey: "removeRedirectUrlsOn",
+      keys: ["removeRedirectUrlsOn"],
+      apply(e) {
+        if (!S.removeRedirectUrlsOn) return;
+        const t = (a) => {
+          if (!a || a.tagName !== "A") return;
+          const n = a.getAttribute("href") || "";
+          if (!/^https?:\/\/(?:www\.)?youtube\.com\/redirect\b/i.test(n)) return;
+          try {
+            const r = new URL(n);
+            const o = r.searchParams.get("q");
+            if (o) a.setAttribute("href", o);
+          } catch (e) {}
+        };
+        const n = new MutationObserver((e) => {
+          for (const a of e)
+            if (a.type === "attributes" && a.attributeName === "href") t(a.target);
+            else if (a.type === "childList")
+              for (const e of a.addedNodes) {
+                if (e.nodeType !== 1) continue;
+                if (e.tagName === "A") t(e);
+                if (e.querySelectorAll) e.querySelectorAll("a[href]").forEach(t);
+              }
+        });
+        n.observe(document.body || document.documentElement, {
+          childList: !0,
+          subtree: !0,
+          attributes: !0,
+          attributeFilter: ["href"],
+        });
+        document.querySelectorAll && document.querySelectorAll("a[href]").forEach(t);
+        Yt["remove-redirect-urls"].push(() => {
+          try {
+            n.disconnect();
+          } catch (e) {}
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Replace /redirect links with their real URLs", "removeRedirectUrlsOn"));
+      },
+    }),
+    xa.register({
+      id: "shorten-share-url",
+      name: "Shorten Share URLs",
+      summary:
+        "Strips tracking parameters (si, feature) from youtu.be share links, producing a clean URL that's easier to copy and forward.",
+      masterKey: "shortenShareUrlOn",
+      keys: ["shortenShareUrlOn"],
+      apply(e) {
+        if (!S.shortenShareUrlOn) return;
+        const t = (a) => {
+          if (!a || a.tagName !== "A") return;
+          const n = a.getAttribute("href") || "";
+          if (!/^https?:\/\/youtu\.be\//i.test(n)) return;
+          try {
+            const r = new URL(n);
+            const o = r.pathname.replace(/^\//, "");
+            const i = o + (r.searchParams.get("t") ? "?t=" + r.searchParams.get("t") : "");
+            a.setAttribute("href", "https://youtu.be/" + i);
+            a.setAttribute("data-shortened", "1");
+          } catch (e) {}
+        };
+        const a = new MutationObserver((e) => {
+          for (const a of e)
+            if (a.type === "attributes" && a.attributeName === "href") t(a.target);
+            else if (a.type === "childList")
+              for (const e of a.addedNodes) {
+                if (e.nodeType !== 1) continue;
+                if (e.tagName === "A") t(e);
+                if (e.querySelectorAll) e.querySelectorAll("a[href]").forEach(t);
+              }
+        });
+        a.observe(document.body || document.documentElement, {
+          childList: !0,
+          subtree: !0,
+          attributes: !0,
+          attributeFilter: ["href"],
+        });
+        document.querySelectorAll && document.querySelectorAll("a[href]").forEach(t);
+        Yt["shorten-share-url"].push(() => {
+          try {
+            a.disconnect();
+          } catch (e) {}
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Clean up youtu.be share links", "shortenShareUrlOn"));
+      },
+    }),
+    xa.register({
+      id: "skip-paused-continue",
+      name: "Auto-Continue Paused Video",
+      summary:
+        "Auto-dismisses the 'Video paused. Continue watching?' dialog that appears when you switch tabs and come back.",
+      masterKey: "skipPausedContinueOn",
+      keys: ["skipPausedContinueOn"],
+      apply(e) {
+        if (!S.skipPausedContinueOn) return;
+        const t = () => {
+          const a = document.querySelectorAll(
+            "yt-confirm-dialog-renderer, tp-yt-paper-dialog",
+          );
+          for (const n of a) {
+            if (n.dataset && n.dataset.ytpHandled) continue;
+            try {
+              const a = n.querySelectorAll("button");
+              for (const t of a) {
+                const a = (t.textContent || "").toLowerCase();
+                if (/yes|continue|ok|play/.test(a)) {
+                  (n.dataset.ytpHandled = "1"), t.click();
+                  break;
+                }
+              }
+            } catch (e) {}
+          }
+        };
+        t();
+        const a = setInterval(t, 1500);
+        Yt["skip-paused-continue"].push(() => clearInterval(a));
+      },
+      settings(e) {
+        e.appendChild(Io("Auto-click 'Continue watching' in the paused-video dialog", "skipPausedContinueOn"));
+      },
+    }),
+    xa.register({
+      id: "click-logo-to-subs",
+      name: "Click Logo to Subscriptions",
+      summary:
+        "Click the YouTube logo in the top-left to go to your Subscriptions feed instead of Home.",
+      masterKey: "logoToSubsOn",
+      keys: ["logoToSubsOn"],
+      apply(e) {
+        if (!S.logoToSubsOn) return;
+        const t = (n) => {
+          const a = n.target && n.target.closest && n.target.closest("#logo, ytd-topbar-logo-renderer, ytd-logo");
+          if (!a) return;
+          n.preventDefault();
+          n.stopPropagation();
+          try {
+            location.href = "/feed/subscriptions";
+          } catch (e) {}
+        };
+        e.addListener(document, "click", t, !0);
+        Yt["click-logo-to-subs"].push(() => {});
+      },
+      settings(e) {
+        e.appendChild(Io("Clicking the YouTube logo goes to Subscriptions", "logoToSubsOn"));
+      },
+    }),
+    xa.register({
+      id: "default-channel-tab",
+      name: "Default Channel Tab",
+      summary:
+        "When opening a channel page, jump to the tab you choose (Videos, Shorts, Live, Playlists, Community, About) instead of the default Featured tab.",
+      masterKey: "defaultChannelTab",
+      keys: ["defaultChannelTab"],
+      apply(e) {
+        e.onNav(() => {
+          const want = S.defaultChannelTab || "featured";
+          if (want === "featured") return;
+          const r = location.pathname.match(/^\/(@[^\/]+)\/?$/);
+          if (!r) return;
+          try {
+            location.replace(r[1] + "/" + want);
+          } catch (e) {}
+        });
+      },
+      settings(e) {
+        const tabs = {
+          featured: "Featured (default)",
+          videos: "Videos",
+          shorts: "Shorts",
+          live: "Live",
+          playlists: "Playlists",
+          community: "Community",
+          about: "About",
+        };
+        e.appendChild(Ro("Default channel tab", "defaultChannelTab", tabs));
+      },
+    }),
+    xa.register({
+      id: "blur-thumbnails",
+      name: "Blur Thumbnails",
+      summary:
+        "Blur video thumbnails until you hover over them. Reduces the visual pull of recommendations and helps you focus.",
+      masterKey: "blurThumbnailsOn",
+      keys: ["blurThumbnailsOn", "blurThumbnailsAmount"],
+      apply(e) {
+        if (!S.blurThumbnailsOn) return;
+        const t = document.createElement("style");
+        (t.id = "ytp-blur-thumbs"),
+          (t.textContent =
+            "ytd-rich-item-renderer #thumbnail yt-image img, ytd-thumbnail img, ytd-playlist-thumbnail img{filter:blur(" +
+            (Number(S.blurThumbnailsAmount) || 12) +
+            "px)!important;transition:filter .25s ease-out}ytd-rich-item-renderer:hover #thumbnail yt-image img, ytd-thumbnail:hover img{filter:blur(0)!important}"),
+          (document.head || document.documentElement).appendChild(t);
+        Yt["blur-thumbnails"].push(() => {
+          try {
+            t.remove();
+          } catch (e) {}
+        });
+      },
+      settings(e) {
+        (e.appendChild(Io("Blur video thumbnails until hover", "blurThumbnailsOn")),
+          e.appendChild(
+            No("Blur strength", "blurThumbnailsAmount", 4, 30, 2, (e) => e + "px"),
+          ));
+      },
+    }),
+    xa.register({
+      id: "hide-top-live-games",
+      name: "Hide Top Live Games",
+      summary:
+        "Hides the 'Top live games' shelf that YouTube sometimes shows on the Home feed.",
+      masterKey: "hideTopLiveGamesOn",
+      keys: ["hideTopLiveGamesOn"],
+      apply(e) {
+        if (!S.hideTopLiveGamesOn) return;
+        const t = () => {
+          const a = document.querySelectorAll("ytd-shelf-renderer");
+          for (const n of a) {
+            if (n.dataset && n.dataset.ytpTLGHidden) continue;
+            const r = n.querySelector("h2");
+            if (r && /top live games/i.test(r.textContent || "")) {
+              (n.style.display = "none"), (n.dataset.ytpTLGHidden = "1");
+            }
+          }
+        };
+        t();
+        const a = new MutationObserver(t);
+        a.observe(document.body || document.documentElement, { childList: !0, subtree: !0 });
+        Yt["hide-top-live-games"].push(() => {
+          try {
+            a.disconnect();
+          } catch (e) {}
+          document.querySelectorAll("ytd-shelf-renderer[data-ytp-tlg-hidden]").forEach((e) => {
+            e.style.display = "";
+            delete e.dataset.ytpTLGHidden;
+          });
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Hide the 'Top live games' shelf on Home", "hideTopLiveGamesOn"));
+      },
+    }),
+    xa.register({
+      id: "open-settings-on-hover",
+      name: "Open YT Settings on Hover",
+      summary:
+        "Hovering over the player settings (gear) button instantly opens the settings menu, instead of needing a click.",
+      masterKey: "openSettingsOnHoverOn",
+      keys: ["openSettingsOnHoverOn"],
+      apply(e) {
+        if (!S.openSettingsOnHoverOn) return;
+        let t = null;
+        const a = (n) => {
+          const r = n.target && n.target.closest && n.target.closest(".ytp-settings-button");
+          if (!r) return;
+          clearTimeout(t);
+          t = setTimeout(() => {
+            try {
+              r.click();
+            } catch (e) {}
+          }, 300);
+        };
+        const n = () => clearTimeout(t);
+        e.addListener(document, "mouseover", a, !0);
+        e.addListener(document, "mouseout", n, !0);
+        Yt["open-settings-on-hover"].push(() => {
+          clearTimeout(t);
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Hover the settings button to open the menu", "openSettingsOnHoverOn"));
+      },
+    }),
+    xa.register({
+      id: "auto-recover-video",
+      name: "Auto-Recover Video on Reconnect",
+      summary:
+        "If the video pauses because your internet dropped, automatically resume playback once the connection is restored.",
+      masterKey: "autoRecoverOn",
+      keys: ["autoRecoverOn"],
+      apply(e) {
+        if (!S.autoRecoverOn) return;
+        const t = () => {
+          if (!navigator.onLine) return;
+          const a = ie.el && ie.el();
+          if (!a) return;
+          if (a.paused) {
+            a.play().catch(() => {});
+            pe("Network restored - resuming video", 2000, "success");
+          }
+        };
+        e.addListener(window, "online", t);
+        Yt["auto-recover-video"].push(() => {});
+      },
+      settings(e) {
+        e.appendChild(Io("Auto-resume the video when internet comes back", "autoRecoverOn"));
+      },
+    }),
+    xa.register({
+      id: "background-players-pause",
+      name: "Pause Background Players",
+      summary:
+        "Pauses YouTube videos in background tabs whenever you switch to another tab. Saves bandwidth and CPU.",
+      masterKey: "bgPlayersPauseOn",
+      keys: ["bgPlayersPauseOn"],
+      apply(e) {
+        if (!S.bgPlayersPauseOn) return;
+        let t = null;
+        const a = () => {
+          if (document.visibilityState === "visible") {
+            t && (clearTimeout(t), (t = null));
+            return;
+          }
+          t = setTimeout(() => {
+            const n = ie.el && ie.el();
+            n && !n.paused && !n.ended && n.pause();
+          }, 500);
+        };
+        e.addListener(document, "visibilitychange", a);
+        Yt["background-players-pause"].push(() => {
+          t && clearTimeout(t);
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Pause the video when the tab is hidden", "bgPlayersPauseOn"));
+      },
+    }),
+    xa.register({
+      id: "forward-rewind-buttons",
+      name: "Forward / Rewind Buttons",
+      summary:
+        "Adds forward and rewind buttons to the player. Configurable step (default 10 seconds).",
+      masterKey: "forwardRewindOn",
+      keys: ["forwardRewindOn", "forwardRewindSec"],
+      apply(e) {
+        if (!S.forwardRewindOn) return;
+        const t = () => {
+          const r = document.querySelector("#movie_player .ytp-left-controls, .html5-video-player .ytp-left-controls");
+          if (!r || r.querySelector(".ytp-fr-btn")) return;
+          const o = ie.el && ie.el();
+          if (!o) return;
+          const s = Math.max(1, Number(S.forwardRewindSec) || 10);
+          const i = document.createElement("button");
+          (i.type = "button"),
+            (i.className = "ytp-button ytp-extra-btn ytp-fr-btn ytp-fr-rewind"),
+            (i.title = "Rewind " + s + " seconds"),
+            i.setAttribute("aria-label", "Rewind " + s + " seconds"),
+            a(
+              i,
+              wr('<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 6v12L4 12zM20 6v12l-7-6z"/></svg>'),
+            ),
+            i.addEventListener(
+              "click",
+              (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                try {
+                  o.currentTime = Math.max(0, o.currentTime - s);
+                } catch (e) {}
+              },
+              !0,
+            );
+          const l = document.createElement("button");
+          (l.type = "button"),
+            (l.className = "ytp-button ytp-extra-btn ytp-fr-btn ytp-fr-forward"),
+            (l.title = "Forward " + s + " seconds"),
+            l.setAttribute("aria-label", "Forward " + s + " seconds"),
+            a(
+              l,
+              wr('<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l7-6zM4 6v12l7-6z"/></svg>'),
+            ),
+          l.addEventListener(
+            "click",
+            (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              try {
+                o.currentTime = Math.min(o.duration || 1e9, o.currentTime + s);
+              } catch (e) {}
+            },
+            !0,
+          );
+          const c = r.querySelector(".ytp-play-button");
+          const d = c && c.parentNode === r ? c.nextSibling : null;
+          d && d.parentNode === r ? r.insertBefore(i, d) : r.appendChild(i);
+          d && d.parentNode === r ? r.insertBefore(l, d) : r.appendChild(l);
+        };
+        t();
+        Mr("forward-rewind", t);
+        e.onNav(() => e.addTimeout(t, 700));
+        Yt["forward-rewind-buttons"].push(() => {
+          document.querySelectorAll(".ytp-fr-btn").forEach((e) => e.remove());
+        });
+      },
+      settings(e) {
+        (e.appendChild(Io("Show forward and rewind buttons in the player", "forwardRewindOn")),
+          e.appendChild(
+            No("Step (seconds)", "forwardRewindSec", 1, 120, 1, (e) => e + "s"),
+          ));
+      },
+    }),
+    xa.register({
+      id: "reverse-playlist",
+      name: "Reverse Playlist Order",
+      summary:
+        "Adds a button to reverse the order of videos in a playlist. Useful for rewatching or undoing an unintended sort.",
+      masterKey: "reversePlaylistOn",
+      keys: ["reversePlaylistOn"],
+      apply(e) {
+        if (!S.reversePlaylistOn) return;
+        const t = () => {
+          if (!location.pathname.includes("/playlist")) return;
+          const a = document.querySelector("ytd-playlist-header-renderer");
+          if (!a || a.querySelector("#ytp-reverse-pl-btn")) return;
+          const n = document.createElement("button");
+          (n.id = "ytp-reverse-pl-btn"),
+            (n.type = "button"),
+            (n.className = "ytp-btn"),
+            (n.textContent = "↕ Reverse"),
+            (n.title = "Reverse the playlist order"),
+            n.style.cssText = "margin-left:8px";
+          n.addEventListener("click", () => {
+            try {
+              const a = document.querySelectorAll("ytd-playlist-video-renderer");
+              if (a.length < 2) {
+                pe("Not enough videos to reverse", 1500, "info");
+                return;
+              }
+              const r = a[0] && a[0].parentNode;
+              if (r) {
+                const o = Array.from(a).reverse();
+                o.forEach((e) => r.appendChild(e));
+                pe("Playlist reversed (" + a.length + " videos)", 1500, "success");
+              }
+            } catch (e) {
+              pe("Couldn't reverse", 1500, "error");
+            }
+          });
+          const r =
+            a.querySelector("#top-level-buttons, #buttons, .metadata-actions, #meta") || a;
+          r.appendChild(n);
+        };
+        t();
+        Mr("reverse-playlist", t);
+        e.onNav(() => e.addTimeout(t, 800));
+        Yt["reverse-playlist"].push(() => {
+          const a = document.getElementById("ytp-reverse-pl-btn");
+          a && a.remove();
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Show a 'Reverse' button on playlist pages", "reversePlaylistOn"));
+      },
+    }),
+    xa.register({
+      id: "flip-video",
+      name: "Flip Video",
+      summary:
+        "Mirror the video horizontally or vertically. Useful for tutorials, screen recordings, or just for fun.",
+      masterKey: "flipVideoOn",
+      keys: ["flipVideoOn", "flipVideoH", "flipVideoV"],
+      apply(e) {
+        const t = () => {
+          if (!S.flipVideoOn) return;
+          const n = ie.el && ie.el();
+          if (!n) return;
+          const r = (S.flipVideoH ? -1 : 1) + "," + (S.flipVideoV ? -1 : 1);
+          try {
+            n.style.transform = "scale(" + r + ")";
+          } catch (e) {}
+        };
+        const mount = () => {
+          const r = document.querySelector("#movie_player .ytp-right-controls");
+          if (!r || r.querySelector(".ytp-flip-btn")) return;
+          const o = ie.el && ie.el();
+          if (!o) return;
+          const i = document.createElement("button");
+          (i.type = "button"),
+            (i.className = "ytp-button ytp-extra-btn ytp-flip-btn"),
+            (i.title = "Flip horizontally"),
+            i.setAttribute("aria-label", "Flip horizontally"),
+            a(
+              i,
+              wr('<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 21h2v-2h-2v2zm4-12h-2v2h2V9zm0 4h-2v2h2v-2zm-4-4h-2v6h2V9zm-4 6h2V9H7v6zm12-10V3l-4 4 4 4V7zM5 7v4l4-4-4-4v3H3v2h2z"/></svg>'),
+            ),
+            i.addEventListener(
+              "click",
+              (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                Ta("flipVideoH", !S.flipVideoH);
+                t();
+              },
+              !0,
+            );
+          const l = document.createElement("button");
+          (l.type = "button"),
+            (l.className = "ytp-button ytp-extra-btn ytp-flip-btn ytp-flip-v"),
+            (l.title = "Flip vertically"),
+            l.setAttribute("aria-label", "Flip vertically"),
+            a(
+              l,
+              wr('<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 15v2h2v-2H3zm4 0v2h2v-2H7zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zm4-2v2H4v-2h15zm0-4H4V7h15v2z"/></svg>'),
+            ),
+          l.addEventListener(
+            "click",
+            (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              Ta("flipVideoV", !S.flipVideoV);
+              t();
+            },
+            !0,
+          );
+          const c = r.querySelector(".ytp-fullscreen-button");
+          const d = c && c.parentNode === r ? c : null;
+          d && d.parentNode === r ? r.insertBefore(i, d) : r.appendChild(i),
+            d && d.parentNode === r ? r.insertBefore(l, d) : r.appendChild(l);
+        };
+        S.flipVideoOn && (mount(), t());
+        Mr("flip-video", () => S.flipVideoOn && mount());
+        e.onNav(() => e.addTimeout(() => S.flipVideoOn && (mount(), t()), 1200));
+        So("cfg.changed", ({ key: n }) => {
+          if ("flipVideoOn" === n) {
+            if (S.flipVideoOn) mount(), t();
+            else {
+              const r = ie.el && ie.el();
+              r && (r.style.transform = "");
+              document.querySelectorAll(".ytp-flip-btn").forEach((e) => e.remove());
+            }
+          } else if (n === "flipVideoH" || n === "flipVideoV") t();
+        });
+        Yt["flip-video"].push(() => {
+          const n = ie.el && ie.el();
+          n && (n.style.transform = "");
+          document.querySelectorAll(".ytp-flip-btn").forEach((e) => e.remove());
+        });
+      },
+      settings(e) {
+        e.appendChild(Io("Show flip buttons in the player", "flipVideoOn"));
+        e.appendChild(Io("Flip horizontally by default", "flipVideoH"));
+        e.appendChild(Io("Flip vertically by default", "flipVideoV"));
       },
     }));
   let _n = null;

@@ -4,7 +4,7 @@
 
 **Make YouTube yours.** A single userscript that fixes the ads, kills the clutter, themes the site, captures screenshots, skips sponsors, remembers where you stopped, and gives you back the keyboard.
 
-[![Version](https://img.shields.io/badge/version-3.0.10-ff3d7f)](#whats-new)
+[![Version](https://img.shields.io/badge/version-3.0.11-ff3d7f)](#whats-new)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Greasy Fork compatible](https://img.shields.io/badge/greasyfork-compatible-success)](https://greasyfork.org)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](yt+.user.js)
@@ -15,9 +15,15 @@
 
 ---
 
-## What's new in v3.0.10
+## What's new in v3.0.11
 
-- **Update mechanism rewritten for near-real-time updates** — both `@updateURL` and `@downloadURL` now point at the stable `releases/latest/download/...` URL, which GitHub serves with `cache-control: no-cache` and which always resolves to the current release. The script manager's periodic check now always finds the latest version, and re-opening the install link shows a proper "Update" dialog (not "Reinstall") when a new version is out. The in-script `Check for updates` flow now opens a sticky clickable banner instead of a disappearing toast, and YT+ auto-checks for updates every 6 hours per session even if your userscript manager has auto-updates disabled or set to a long interval.
+- **Dashboard GUI is now GPU-accelerated, opaque, and crisp** — the dashboard panel had a transparent background that let YouTube's busy content bleed through, light text on light gradient, and the browser was repainting the whole thing on every animation tick. The patch:
+  - Background opacity bumped from 55% to 82% (text no longer bleeds through)
+  - Backdrop blur increased from 22px to 32px, with a contrast() filter for crisper text
+  - Added a 200×200 SVG noise texture as an overlay (frosted-glass grain)
+  - All animated elements get their own GPU layer via `will-change`, scoped repaints via `contain`, and `backface-visibility: hidden` so the entrance animation runs at the display's native refresh rate
+  - Text color bumped from `#eef` to `#f5f7fb` with subtle `text-shadow` for legibility
+  - Section headers, labels, and tabs all get lifted to a more readable shade
 
 For everything that came before this, see the [release history](#release-history).
 

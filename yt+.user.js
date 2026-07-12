@@ -268,6 +268,7 @@
         blurThumbnailsOn: !1,
         blurThumbnailsAmount: 12,
         hideTopLiveGamesOn: !1,
+        hfrAllowOn: !1,
         openSettingsOnHoverOn: !1,
         autoRecoverOn: !1,
         bgPlayersPauseOn: !1,
@@ -9500,6 +9501,37 @@
       },
       settings(e) {
         e.appendChild(Io("Hide the 'Top live games' shelf on Home", "hideTopLiveGamesOn"));
+      },
+    }),
+    xa.register({
+      id: "hfr-allow",
+      name: "Allow High Frame Rate",
+      summary:
+        "Sets the VISITOR_INFO1_LIVE cookie that unlocks 60fps streams. Reload the video after enabling to see HFR options in the quality menu.",
+      masterKey: "hfrAllowOn",
+      keys: ["hfrAllowOn"],
+      apply(e) {
+        if (!S.hfrAllowOn) return;
+        const t = () => {
+          try {
+            const n = Math.random().toString(36).slice(2, 14) + "QfX";
+            document.cookie =
+              "VISITOR_INFO1_LIVE=" +
+              n +
+              "; domain=.youtube.com; path=/; max-age=" +
+              6 * 30 * 24 * 60 * 60;
+            pe(
+              "HFR cookie set - reload this video to see 60fps options.",
+              3000,
+              "info",
+            );
+          } catch (e) {}
+        };
+        t();
+        Yt["hfr-allow"].push(() => {});
+      },
+      settings(e) {
+        e.appendChild(Io("Enable high frame rate (HFR/60fps) playback", "hfrAllowOn"));
       },
     }),
     xa.register({

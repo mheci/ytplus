@@ -8461,74 +8461,98 @@
       masterKey: "fpsCounterOn",
       keys: ["fpsCounterOn", "fpsCounterPos"],
       apply(e) {
-        if (!S.fpsCounterOn) return;
         let t = null;
         let a = null;
-        const n = () => {
-          if (t && document.body && document.body.contains(t)) return;
-          t = document.createElement("div");
-          t.id = "ytp-fps-box";
-          const r = S.fpsCounterPos || "tl";
-          ((t.className = "ytp-fps-box ytp-fps-" + r),
-            (t.style.cssText =
-              "position:fixed;z-index:2147483635;padding:3px 7px;background:rgba(20,22,28,.78);color:#9ff;border:1px solid rgba(159,255,255,.28);border-radius:6px;font:11px/1 ui-monospace,SFMono-Regular,Consolas,monospace;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none;min-width:54px;text-align:center"),
-            "tl" === r
-              ? ((t.style.top = "8px"), (t.style.left = "8px"))
-              : "tr" === r
-                ? ((t.style.top = "8px"), (t.style.right = "8px"))
-                : "bl" === r
-                  ? ((t.style.bottom = "48px"), (t.style.left = "8px"))
-                  : ((t.style.bottom = "48px"), (t.style.right = "8px")),
-            document.body && document.body.appendChild(t));
-        };
         let r = 0;
         let o = performance.now();
         const i = () => {
-          const t = ie.el();
-          if (!t) {
-            a && (cancelAnimationFrame(a), (a = null));
+          if (!S.fpsCounterOn) return;
+          const s = S.fpsCounterPos || "tl";
+          if (t) {
+            if (t.dataset.pos !== s) {
+              (t.className = "ytp-fps-box ytp-fps-" + s),
+                (t.dataset.pos = s),
+                (t.style.top = "tl" === s || "tr" === s ? "8px" : ""),
+                (t.style.bottom = "bl" === s || "br" === s ? "48px" : ""),
+                (t.style.left = "tl" === s || "bl" === s ? "8px" : ""),
+                (t.style.right = "tr" === s || "br" === s ? "8px" : "");
+            }
+          } else {
+            t = document.createElement("div");
+            t.id = "ytp-fps-box";
+            t.className = "ytp-fps-box ytp-fps-" + s;
+            t.dataset.pos = s;
+            t.style.cssText =
+              "position:fixed;z-index:2147483635;padding:3px 7px;background:rgba(20,22,28,.78);color:#9ff;border:1px solid rgba(159,255,255,.28);border-radius:6px;font:11px/1 ui-monospace,SFMono-Regular,Consolas,monospace;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none;min-width:54px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.35)";
+            ("tl" === s || "tr" === s) && (t.style.top = "8px"),
+              ("bl" === s || "br" === s) && (t.style.bottom = "48px"),
+              ("tl" === s || "bl" === s) && (t.style.left = "8px"),
+              ("tr" === s || "br" === s) && (t.style.right = "8px"),
+              document.body && document.body.appendChild(t);
+          }
+        };
+        const d = () => {
+          if (!Xt.visible) {
+            a = setTimeout(d, 250);
             return;
           }
-          (r++,
-            (a = requestAnimationFrame(i)),
-            (function () {
-              const i = performance.now();
-              if (i - o < 500) return;
-              const c = Math.round((1e3 * r) / (i - o));
-              (r = 0), (o = i);
-              const s = t.paused ? "paused" : t.ended ? "ended" : "playing";
-              let l = "#9ff";
-              c < 24
-                ? (l = "#ff5252")
-                : c < 50
-                  ? (l = "#ffd166")
-                  : (l = "#4caf50");
-              (n(),
-                t && (t.textContent = c + " fps (" + s + ")"),
-                t && (t.style.color = l));
-            })());
+          const n = performance.now();
+          r++;
+          if (n - o < 500) {
+            a = requestAnimationFrame(d);
+            return;
+          }
+          const c = Math.round((1e3 * r) / (n - o));
+          (r = 0), (o = n);
+          const s = (ie.el && ie.el()) ? (ie.el().paused ? "paused" : ie.el().ended ? "ended" : "playing") : "—";
+          const l = c < 24 ? "#ff5252" : c < 50 ? "#ffd166" : "#4caf50";
+          (i(),
+            t && (t.textContent = c + " fps (" + s + ")"),
+            t && (t.style.color = l),
+            (a = requestAnimationFrame(d)));
         };
-        (n(),
-          (a = requestAnimationFrame(i)),
+        const c = (n) => {
+          a && "number" == typeof a
+            ? cancelAnimationFrame(a)
+            : a && clearTimeout(a),
+            (a = null),
+            n &&
+              ((r = 0), (o = performance.now()), (a = requestAnimationFrame(d)));
+        };
+        S.fpsCounterOn &&
+          ((r = 0), (o = performance.now()), (a = requestAnimationFrame(d))),
           e.onNav(() => {
-            (a && (cancelAnimationFrame(a), (a = null)),
-              e.addTimeout(() => {
-                ((r = 0), (o = performance.now()), (a = requestAnimationFrame(i)));
-              }, 1200));
+            c(0), e.addTimeout(() => c(1), 1200);
+          }),
+          So("cfg.changed", ({ key: n }) => {
+            "fpsCounterOn" === n
+              ? S.fpsCounterOn
+                ? c(1)
+                : (c(0),
+                  t && (function () { try { t.remove(); } catch (e) {} })(),
+                  (t = null))
+              : "fpsCounterPos" === n && t && i();
           }),
           Yt["fps-counter"].push(() => {
-            a && (cancelAnimationFrame(a), (a = null));
+            c(0);
             if (t) {
               try {
                 t.remove();
               } catch (e) {}
               t = null;
             }
-          }));
+          });
       },
       settings(e) {
         e.appendChild(Io("Show live FPS overlay", "fpsCounterOn"));
-        e.appendChild(Ro("Position", "fpsCounterPos", { tl: "Top-left", tr: "Top-right", bl: "Bottom-left", br: "Bottom-right" }));
+        e.appendChild(
+          Ro("Position", "fpsCounterPos", {
+            tl: "Top-left",
+            tr: "Top-right",
+            bl: "Bottom-left",
+            br: "Bottom-right",
+          }),
+        );
       },
     }),
     xa.register({
@@ -8539,92 +8563,131 @@
       masterKey: "bufferHealthOn",
       keys: ["bufferHealthOn"],
       apply(e) {
-        if (!S.bufferHealthOn) return;
         let t = null;
-        let a = 0;
-        let n = 0;
+        let n = null;
         let r = 0;
-        const o = () => {
-          if (t && document.body && document.body.contains(t)) return;
-          (t = document.createElement("div")),
-            (t.id = "ytp-buf-box"),
-            (t.style.cssText =
-              "position:fixed;z-index:2147483635;left:8px;bottom:48px;padding:6px 10px;background:rgba(20,22,28,.78);color:#ddd;border:1px solid rgba(255,255,255,.14);border-radius:8px;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);min-width:160px;pointer-events:none");
-          const a = document.createElement("div");
-          a.className = "ytp-buf-bar";
-          a.style.cssText =
-            "height:4px;background:rgba(255,255,255,.12);border-radius:3px;margin-top:4px;overflow:hidden";
-          const n = document.createElement("div");
-          n.className = "ytp-buf-fill";
-          n.style.cssText =
-            "height:100%;width:0;background:#4caf50;border-radius:3px;transition:width .3s";
-          (a.appendChild(n), t.appendChild(a), document.body && document.body.appendChild(t));
-        };
+        let o = 0;
         const i = () => {
-          const e = ie.el();
-          if (!e) {
+          if (!S.bufferHealthOn) return;
+          const v = ie.el && ie.el();
+          if (t) {
+            v || (t.style.display = "none");
             return;
           }
-          (o(), (t.style.display = ""));
+          if (!v || !document.body) return;
+          t = document.createElement("div");
+          t.id = "ytp-buf-box";
+          t.style.cssText =
+            "position:fixed;z-index:2147483635;left:8px;bottom:48px;padding:6px 10px;background:rgba(20,22,28,.78);color:#ddd;border:1px solid rgba(255,255,255,.14);border-radius:8px;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);min-width:160px;pointer-events:none;box-shadow:0 6px 20px rgba(0,0,0,.4)";
+          const d = document.createElement("div");
+          (d.className = "ytp-buf-text"),
+            (d.style.cssText = "white-space:nowrap"),
+            t.appendChild(d);
+          const a = document.createElement("div");
+          (a.className = "ytp-buf-bar"),
+            (a.style.cssText =
+              "height:4px;background:rgba(255,255,255,.12);border-radius:3px;margin-top:4px;overflow:hidden");
+          const l = document.createElement("div");
+          (l.className = "ytp-buf-fill"),
+            (l.style.cssText =
+              "height:100%;width:0;background:#4caf50;border-radius:3px;transition:width .3s,background .3s");
+          a.appendChild(l);
+          t.appendChild(a);
+          document.body.appendChild(t);
+        };
+        const d = () => {
+          if (!S.bufferHealthOn) return;
+          if (!Xt.visible) {
+            n = setTimeout(d, 500);
+            return;
+          }
+          i();
+          if (!t) {
+            n = setTimeout(d, 1000);
+            return;
+          }
+          const v = ie.el();
+          if (!v) {
+            (t.style.display = "none"), (n = setTimeout(d, 1000));
+            return;
+          }
+          t.style.display = "";
           let a = 0;
           try {
-            const t = e.buffered;
-            if (t && t.length) {
-              const n = e.currentTime;
-              for (let r = 0; r < t.length; r++) {
-                if (t.end(r) >= n) {
-                  a = t.end(r) - n;
+            const u = v.buffered;
+            if (u && u.length) {
+              const m = v.currentTime;
+              for (let p = 0; p < u.length; p++) {
+                if (u.end(p) >= m) {
+                  a = u.end(p) - m;
                   break;
                 }
               }
             }
           } catch (e) {}
-          const i = e.paused ? "paused" : e.ended ? "ended" : e.seeking ? "seeking" : "playing";
-          let d = "#4caf50";
-          a < 2
-            ? (d = "#ff5252")
-            : a < 6
-              ? (d = "#ffd166")
-              : (d = "#4caf50");
-          const c = t.querySelector(".ytp-buf-fill");
-          c && ((c.style.width = Math.min(100, a * 5) + "%"), (c.style.background = d));
-          const s = t.firstChild;
-          s && (s.nodeType === 3 ? (s.textContent = "Buffer: " + a.toFixed(1) + "s | Rebuffers: " + r + " | " + i) : null);
+          const l = v.paused
+            ? "paused"
+            : v.ended
+              ? "ended"
+              : v.seeking
+                ? "seeking"
+                : v.readyState < 3
+                  ? "loading"
+                  : "playing";
+          const c = a < 2 ? "#ff5252" : a < 6 ? "#ffd166" : "#4caf50";
+          const s = t.querySelector(".ytp-buf-fill");
+          s && ((s.style.width = Math.min(100, a * 5) + "%"), (s.style.background = c));
+          const h = t.querySelector(".ytp-buf-text");
+          h &&
+            (h.textContent =
+              "Buffer: " +
+              a.toFixed(1) +
+              "s | Rebuffers: " +
+              o +
+              " | " +
+              l);
+          n = setTimeout(d, 750);
         };
-        const d = () => {
-          r++;
-          pe("Rebuffer #" + r, 1200, "info");
+        const a = () => {
+          const v = ie.el();
+          v && !v.paused && !v.ended && ((o += 1), r < 4 && pe("Rebuffer #" + o, 1200, "info"), (r = r));
         };
-        const c = () => {
-          (ie.el() &&
-            (a++,
-            r === 0 && d()));
+        const l = () => {
+          r = 0;
         };
-        const s = () => {
-          ie.el() && ie.el().paused === !1 && ((r = r), 0);
+        const startInterval = () => {
+          n && clearTimeout(n);
+          n = setTimeout(d, 250);
         };
-        const l = setInterval(i, 750);
-        const p = (e, t, a) => {
-          const n = e.addListener;
-          n && n.call(e, t, a, !1);
+        const stopInterval = () => {
+          n && clearTimeout(n), (n = null);
         };
-        (e.addListener(ie, "waiting", c),
-          e.addListener(ie, "stalled", c),
-          e.addListener(ie, "playing", s),
-          e.onNav(() => {
-            e.addTimeout(() => {
-              (i(), (a = 0));
-            }, 1500);
-          }),
-          Yt["buffer-health"].push(() => {
-            clearInterval(l);
-            if (t) {
-              try {
-                t.remove();
-              } catch (e) {}
-              t = null;
-            }
-          }));
+        S.bufferHealthOn && startInterval();
+        e.addListener(ie, "waiting", a);
+        e.addListener(ie, "stalled", a);
+        e.addListener(ie, "playing", l);
+        e.onNav(() => {
+          o = 0;
+          e.addTimeout(startInterval, 1500);
+        });
+        So("cfg.changed", ({ key: k }) => {
+          "bufferHealthOn" === k &&
+            (S.bufferHealthOn
+              ? (startInterval(), i())
+              : (stopInterval(),
+                t && (function () { try { t.remove(); } catch (e) {} })(),
+                (t = null),
+                (o = 0)));
+        });
+        Yt["buffer-health"].push(() => {
+          stopInterval();
+          if (t) {
+            try {
+              t.remove();
+            } catch (e) {}
+            t = null;
+          }
+        });
       },
       settings(e) {
         e.appendChild(Io("Show buffer health overlay", "bufferHealthOn"));
@@ -8638,40 +8701,62 @@
       masterKey: "longTaskWarnerOn",
       keys: ["longTaskWarnerOn", "longTaskWarnerThreshold"],
       apply(e) {
-        if (!S.longTaskWarnerOn) return;
         if (typeof PerformanceObserver === "undefined") return;
-        const t = Number(S.longTaskWarnerThreshold) || 50;
         let a = null;
-        try {
-          (a = new PerformanceObserver((n) => {
-            try {
-              const o = Array.from(n.getEntries ? n.getEntries() : []);
-              for (const n of o) {
-                const r = n.duration || 0;
-                if (r < t) continue;
-                let o = "unknown";
-                try {
-                  o = (n.name || "task").slice(0, 60);
-                } catch (e) {}
-                h("long task " + r.toFixed(1) + "ms (" + o + ")", n);
-                if (r > t * 2) {
-                  pe(
-                    "Long task: " + r.toFixed(0) + "ms (" + o + ")",
-                    1800,
-                    "info",
-                  );
+        let r = 0;
+        let o = 0;
+        const start = () => {
+          if (a) return;
+          try {
+            a = new PerformanceObserver((n) => {
+              try {
+                const threshold = Math.max(
+                  20,
+                  Math.min(1000, Number(S.longTaskWarnerThreshold) || 50),
+                );
+                const entries = Array.from(
+                  n.getEntries ? n.getEntries() : [],
+                );
+                for (const ev of entries) {
+                  const dur = ev.duration || 0;
+                  if (dur < threshold) continue;
+                  let name = "task";
+                  try {
+                    name = (ev.name || "task").slice(0, 60);
+                  } catch (e) {}
+                  (r += 1),
+                    h(
+                      "long task " + dur.toFixed(1) + "ms (" + name + ")",
+                      ev,
+                    ),
+                    dur > threshold * 2 &&
+                      (o >= r - 1 && (o = r - 1),
+                      pe(
+                        "Long task: " + dur.toFixed(0) + "ms (" + name + ")",
+                        1800,
+                        "info",
+                      ),
+                      (o = r));
                 }
-              }
-            } catch (e) {}
-          }),
-            a.observe({ entryTypes: ["longtask"] }));
-        } catch (e) {}
-        Yt["long-task-warner"].push(() => {
+              } catch (e) {}
+            });
+            a.observe({ entryTypes: ["longtask"] });
+          } catch (e) {
+            a = null;
+          }
+        };
+        const stop = () => {
           try {
             a && a.disconnect();
           } catch (e) {}
           a = null;
+        };
+        S.longTaskWarnerOn && start();
+        So("cfg.changed", ({ key: k }) => {
+          "longTaskWarnerOn" === k &&
+            (S.longTaskWarnerOn ? start() : stop());
         });
+        Yt["long-task-warner"].push(stop);
       },
       settings(e) {
         (e.appendChild(Io("Warn on long main-thread tasks", "longTaskWarnerOn")),
@@ -19844,6 +19929,16 @@
       flush: () => er(),
       clear: () => rr(),
       fmt: or,
+    },
+    perf: {
+      enableFps: (e) => Ta("fpsCounterOn", !!e),
+      enableBuffer: (e) => Ta("bufferHealthOn", !!e),
+      enableLongTask: (e) => Ta("longTaskWarnerOn", !!e),
+      setLongTaskThreshold: (e) =>
+        Ta(
+          "longTaskWarnerThreshold",
+          Math.max(20, Math.min(1000, Number(e) || 50)),
+        ),
     },
     diagnostics: {
       snapshot: async () => ({

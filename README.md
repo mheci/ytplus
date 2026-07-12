@@ -4,7 +4,7 @@
 
 **Make YouTube yours.** A single userscript that fixes the ads, kills the clutter, themes the site, captures screenshots, skips sponsors, remembers where you stopped, and gives you back the keyboard.
 
-[![Version](https://img.shields.io/badge/version-3.0.4-ff3d7f)](#whats-new)
+[![Version](https://img.shields.io/badge/version-3.0.10-ff3d7f)](#whats-new)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Greasy Fork compatible](https://img.shields.io/badge/greasyfork-compatible-success)](https://greasyfork.org)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](yt+.user.js)
@@ -15,14 +15,9 @@
 
 ---
 
-## What's new in v3.0.4
+## What's new in v3.0.10
 
-- **Font dropdown is fixed** — picking a font for captions no longer requires scrolling through 130 unsorted, invisible rows. The dropdown now has a search field, scroll, hover, and glass styling.
-- **Theme overhaul is sane again** — the full-site glassmorphism option now only touches the chrome (masthead, sidebar, chips, popups). It no longer breaks the home grid or wraps rounded corners around the player.
-- **In-Video Search** — press **Ctrl+F** (configurable) on any video to search its captions. Matches show up as red marks on a timeline strip you can click to seek, plus a scrollable list with the match highlighted in context.
-- **All popups, dialogs, and UI panels are glass** — the resume overlay, geo dropdown, font dropdown, in-video search, and toast are all on the same translucent-dark-with-blur design. No more solid `#212121` boxes.
-- **Alt+Y actually toggles the dashboard now** — and other hotkeys work reliably because they're stored in the same code format (`Alt+KeyY`) that the matcher uses.
-- **Update check works** — `Check for updates` in the menu now hits the GitHub API, compares versions, and shows "up to date" or "v3.0.X available" via a toast. The meta file URL points at `main` so the script manager's own auto-checker sees new versions too.
+- **Update mechanism rewritten for near-real-time updates** — both `@updateURL` and `@downloadURL` now point at the stable `releases/latest/download/...` URL, which GitHub serves with `cache-control: no-cache` and which always resolves to the current release. The script manager's periodic check now always finds the latest version, and re-opening the install link shows a proper "Update" dialog (not "Reinstall") when a new version is out. The in-script `Check for updates` flow now opens a sticky clickable banner instead of a disappearing toast, and YT+ auto-checks for updates every 6 hours per session even if your userscript manager has auto-updates disabled or set to a long interval.
 
 For everything that came before this, see the [release history](#release-history).
 

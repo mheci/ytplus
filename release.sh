@@ -4,12 +4,11 @@
 # Usage:  ./release.sh 3.0.5
 #
 # What it does:
-#  1. Updates the @downloadURL in both files to point at the new version
-#  2. Updates the @version header in both files
-#  3. Updates the @updateURL in the meta to point at the new version's meta
-#  4. Runs node --check
-#  5. Commits, tags, pushes
-#  6. Creates the GitHub release and uploads the assets
+#  1. Updates the @version header in both files
+#  2. (URLs use releases/latest/download/ - no rewrite needed)
+#  3. Runs node --check
+#  4. Commits, tags, pushes
+#  5. Creates the GitHub release and uploads the assets
 set -euo pipefail
 
 if [ $# -ne 1 ]; then
@@ -36,18 +35,11 @@ if [ "$CUR_VER" = "$NEW_VER" ]; then
   exit 1
 fi
 
-NEW_DOWNLOAD="https://github.com/mheci/ytplus/releases/download/v${NEW_VER}/yt%2B.user.js"
-NEW_UPDATE_META="https://github.com/mheci/ytplus/releases/download/v${NEW_VER}/yt%2B.meta.js"
-
-# 1) Update headers
+# 1) Update only the @version. The @updateURL and @downloadURL point at
+# /releases/latest/download/ which is a stable URL that always redirects
+# to the current release. No URL rewrite is needed per-version.
 for f in yt+.user.js yt+.meta.js; do
-  sed -i.bak \
-    -e "s|^// @version      .*|// @version      ${NEW_VER}|" \
-    -e "s|^// @downloadURL  .*|// @downloadURL  ${NEW_DOWNLOAD}|" \
-    "$f"
-  if [ "$f" = "yt+.meta.js" ]; then
-    sed -i.bak -e "s|^// @updateURL    .*|// @updateURL    ${NEW_UPDATE_META}|" "$f"
-  fi
+  sed -i.bak "s|^// @version      .*|// @version      ${NEW_VER}|" "$f"
   rm -f "$f.bak"
 done
 
@@ -117,5 +109,5 @@ done
 echo ""
 echo "=== Done! ==="
 echo "v${NEW_VER} published. Test the update flow:"
-echo "  curl -sL https://raw.githubusercontent.com/mheci/ytplus/main/yt+.meta.js | grep @version"
-echo "  curl -sL https://github.com/mheci/ytplus/releases/download/v${NEW_VER}/yt+.user.js | head -1"
+echo "  curl -sL https://github.com/mheci/ytplus/releases/latest/download/yt%2B.meta.js | grep @version"
+echo "  curl -sL https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js | head -1"

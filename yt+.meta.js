@@ -26,8 +26,11 @@
 // @connect      googlevideo.com
 // @connect      ytimg.com
 // @connect      ggpht.com
+// @connect      api.github.com
+// @connect      raw.githubusercontent.com
+// @connect      objects.githubusercontent.com
 // @icon         https://raw.githubusercontent.com/mheci/ytplus/main/icon.png
 // @noframes
-// @updateURL    https://github.com/mheci/ytplus/releases/download/v3.0.9/yt%2B.meta.js
-// @downloadURL  https://github.com/mheci/ytplus/releases/download/v3.0.9/yt%2B.user.js
+// @updateURL    https://github.com/mheci/ytplus/releases/latest/download/yt%2B.meta.js
+// @downloadURL  https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js
 // ==/UserScript==

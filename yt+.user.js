@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.18.9
-// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.9: "Check for updates" entry improvements. The "up to date" toast is now clickable to open the GitHub releases page so users can read per-version changelogs; the "check failed" toast is now clickable to retry; the cache timestamp is now written only on successful response (so a single network blip no longer suppresses the next 10 minutes of auto-checks); the GitHub URLs are defined once as module-scope constants; the `Fu` parameter is now named `force` instead of shadowing the outer `e` (unsafeWindow). All 7 test suites pass (218 checks). v3.0.18.8: Audit fixes from a third, integrated pass. (1) Bookmark duplicate-id data loss: pressing B twice at the same video position silently overwrote the first bookmark because the id `videoId + "_" + position` collided. The id now includes `Date.now()`. (2) Hotkey re-capture lifecycle refactored: the v3.0.18.7 fix was applied in two of three places that ended a capture; now centralized in a single `_nClear()` helper. The test in test_hotkeys.js actually drives the buttons in jsdom and asserts the listener was removed, not just a source-grep check. (3) Resume overlay thumbnail CSS injection hardening: both overlay thumbnails now use `encodeURI()` for full URL escaping before interpolating into `url(...)`, with the old single-quote escape as a fallback. (4) Dashboard title DOM construction: the `[=] YT+ v<ver>` header now uses `createElement` + `textContent` for consistency with the v3.0.18.6 banner fix. Action registry integrity check added to test_hotkeys.js. All 7 test suites pass (213 checks). v3.0.18.7: Audit fixes from a second, deeper pass. (1) Hotkey re-capture leaked a keydown listener; now removed when a new capture starts. (2) Dashboard search null-dereference on stale data-feat; card hidden silently. v3.0.18.6: Audit fixes — import-from-menu now wires to the real import; SB mute path now counts and accumulates time; ccTextColor and idleDimBlur are sanitized before CSS interpolation; update banner rebuilt with textContent. All 7 test suites pass (203 checks). Known feature gap: `sbChapterRules` (chapter skip rules per channel) is collected but never applied — out of scope for this release. v3.0.18.5: SponsorBlock privacy-mode fix. Since v3.0.14 the SB post-fetch lookup searched the response for `p.hash === hash`, but the SponsorBlock server actually returns `{videoID, segments}` entries — the `hash` field never existed. Privacy mode (default ON) silently returned zero segments for every video because the lookup never matched, even though the server's response had the data. v3.0.18.3 / v3.0.18.4's _dm ReferenceError masked this bug because the whole script crashed before SB ever ran, so it only surfaced once v3.0.18.4 actually loaded. Fix: look up by `p.videoID === e` (the videoId passed into the fetcher). One-line change; no behavior difference for non-privacy mode (which is unaffected). v3.0.18.4: CRITICAL freeze fix. v3.0.18.3 had a ReferenceError in the data-minimization IIFE: the outer `_dm = { ... }` was a bare assignment under strict mode (no `var`/`let`/`const`), which throws "ReferenceError: assignment to undeclared variable _dm" on every page load. The boot catch at the end of the script couldn't save it because the throw happened during the synchronous IIFE evaluation, before the async catch was even registered. The fix is one line — `const _dm = { ... }` — but it makes the entire script load again, including the v3.0.18.3 memory protection system. The inner `_dm_active` typo from v3.0.18.2 was already fixed in v3.0.18.3; v3.0.18.4 closes the same class of bug one level out. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
+// @version      3.0.18.10
+// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.10: "Force video as watched" hotkey now also fires the per-video playbackTracking URLs (the same ones the channel-wide version uses) so the press reliably registers in YouTube Account History. The legacy hardcoded /api/stats/* and InnerTube endpoints are kept as a belt-and-suspenders fallback. Two new config flags split the press into "Mark in Account History" + "Save to local YT+ history" (both default ON), mirroring the channel version. Toast feedback confirms the press. All 8 test suites pass (241 checks; new test_force_watched.js with 23 checks drives Ut() in jsdom and asserts the playbackTracking URLs are fired). v3.0.18.9: "Check for updates" entry improvements. The "up to date" toast is now clickable to open the GitHub releases page so users can read per-version changelogs; the "check failed" toast is now clickable to retry; the cache timestamp is now written only on successful response (so a single network blip no longer suppresses the next 10 minutes of auto-checks); the GitHub URLs are defined once as module-scope constants; the `Fu` parameter is now named `force` instead of shadowing the outer `e` (unsafeWindow). All 7 test suites pass (218 checks). v3.0.18.8: Audit fixes from a third, integrated pass. (1) Bookmark duplicate-id data loss: pressing B twice at the same video position silently overwrote the first bookmark because the id `videoId + "_" + position` collided. The id now includes `Date.now()`. (2) Hotkey re-capture lifecycle refactored: the v3.0.18.7 fix was applied in two of three places that ended a capture; now centralized in a single `_nClear()` helper. The test in test_hotkeys.js actually drives the buttons in jsdom and asserts the listener was removed, not just a source-grep check. (3) Resume overlay thumbnail CSS injection hardening: both overlay thumbnails now use `encodeURI()` for full URL escaping before interpolating into `url(...)`, with the old single-quote escape as a fallback. (4) Dashboard title DOM construction: the `[=] YT+ v<ver>` header now uses `createElement` + `textContent` for consistency with the v3.0.18.6 banner fix. Action registry integrity check added to test_hotkeys.js. All 7 test suites pass (213 checks). v3.0.18.7: Audit fixes from a second, deeper pass. (1) Hotkey re-capture leaked a keydown listener; now removed when a new capture starts. (2) Dashboard search null-dereference on stale data-feat; card hidden silently. v3.0.18.6: Audit fixes — import-from-menu now wires to the real import; SB mute path now counts and accumulates time; ccTextColor and idleDimBlur are sanitized before CSS interpolation; update banner rebuilt with textContent. All 7 test suites pass (203 checks). Known feature gap: `sbChapterRules` (chapter skip rules per channel) is collected but never applied — out of scope for this release. v3.0.18.5: SponsorBlock privacy-mode fix. Since v3.0.14 the SB post-fetch lookup searched the response for `p.hash === hash`, but the SponsorBlock server actually returns `{videoID, segments}` entries — the `hash` field never existed. Privacy mode (default ON) silently returned zero segments for every video because the lookup never matched, even though the server's response had the data. v3.0.18.3 / v3.0.18.4's _dm ReferenceError masked this bug because the whole script crashed before SB ever ran, so it only surfaced once v3.0.18.4 actually loaded. Fix: look up by `p.videoID === e` (the videoId passed into the fetcher). One-line change; no behavior difference for non-privacy mode (which is unaffected). v3.0.18.4: CRITICAL freeze fix. v3.0.18.3 had a ReferenceError in the data-minimization IIFE: the outer `_dm = { ... }` was a bare assignment under strict mode (no `var`/`let`/`const`), which throws "ReferenceError: assignment to undeclared variable _dm" on every page load. The boot catch at the end of the script couldn't save it because the throw happened during the synchronous IIFE evaluation, before the async catch was even registered. The fix is one line — `const _dm = { ... }` — but it makes the entire script load again, including the v3.0.18.3 memory protection system. The inner `_dm_active` typo from v3.0.18.2 was already fixed in v3.0.18.3; v3.0.18.4 closes the same class of bug one level out. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -937,6 +937,15 @@
         sleepTimerOn: !1,
         sleepTimerMin: 30,
         forceWatchedOn: !1,
+        // v3.0.18.10 — split the single-video force-watched hotkey
+        // into the same two on/off switches the channel version has,
+        // so the user can decide whether each press should register
+        // on YouTube's Account History (via the per-video
+        // playbackTracking URLs) and/or update the local IDB
+        // history. Both default ON — same defaults as
+        // forceChannelWatchedAccountHistory / forceChannelWatchedLocalHistory.
+        forceWatchedAccountHistory: !0,
+        forceWatchedLocalHistory: !0,
         forceChannelWatchedOn: !0,
         forceChannelWatchedScope: "all",
         forceChannelWatchedConcurrency: 3,
@@ -4552,6 +4561,11 @@
   }
   function Kt(e, t, a, n) {
     jt = !0;
+    // v3.0.18.10 — feedback toast. The single-video hotkey used to
+    // do the work silently, so users couldn't tell whether the
+    // press actually fired. Mirror the channel version's status
+    // surface here with a small, transient toast.
+    pe("Marked as watched.", 1500, "success");
     const r = {
       loop: e.loop,
       playbackRate: e.playbackRate,
@@ -4596,19 +4610,155 @@
         t.nextVideoOnAutoplay && (t.nextVideoOnAutoplay = o);
       } catch (e) {}
     }
-    Promise.resolve().then(() => {
-      try {
-        Xe(a, {
-          duration: n,
-          title: ie.title(),
-          channel: ie.channel(),
-          channelId: Ne(),
-          thumbnail: ie.thumb(a, "hqdefault"),
-        });
-      } catch (e) {
-        h("fw histMarkWatched", e);
-      }
-    });
+    // v3.0.18.10 — honor forceWatchedLocalHistory. The default is
+    // ON, matching forceChannelWatchedLocalHistory. When OFF, the
+    // local IDB history is left untouched and the only effect of
+    // pressing the hotkey is the YouTube API endpoints below.
+    if (!1 !== S.forceWatchedLocalHistory) {
+      Promise.resolve().then(() => {
+        try {
+          Xe(a, {
+            duration: n,
+            title: ie.title(),
+            channel: ie.channel(),
+            channelId: Ne(),
+            thumbnail: ie.thumb(a, "hqdefault"),
+          });
+        } catch (e) {
+          h("fw histMarkWatched", e);
+        }
+      });
+    }
+    // v3.0.18.10 — Account History path. Fire the per-video
+    // playbackTracking URLs (videostatsPlaybackUrl,
+    // videostatsWatchtimeUrl, atrUrl, qoeUrl, ptrackingUrl,
+    // videostatsDelayplayUrl) returned by /youtubei/v1/player, which
+    // is the same pattern the channel-wide version (`nn()`) uses and
+    // the one that reliably registers a video in YouTube's Account
+    // History. The hardcoded /api/stats/* calls below remain as a
+    // belt-and-suspenders fallback (some YT endpoints are more
+    // forgiving than others about missing session tokens). Default
+    // ON; toggle via forceWatchedAccountHistory.
+    if (!1 !== S.forceWatchedAccountHistory) {
+      Promise.resolve().then(() => {
+        (async () => {
+          try {
+            const track = await (async function (e) {
+              try {
+                const t = Mt(),
+                  a = await Ot(
+                    "player",
+                    {
+                      context: t,
+                      videoId: e,
+                      contentCheckOk: !0,
+                      racyCheckOk: !0,
+                      playbackContext: {
+                        contentPlaybackContext: {
+                          signatureTimestamp: Lt(),
+                          referer: "https://www.youtube.com/watch?v=" + e,
+                          currentUrl: "/watch?v=" + e,
+                          autoplay: !1,
+                          autoCaptionsDefaultOn: !1,
+                          html5Preference: "HTML5_PREF_WANTS",
+                          lactMilliseconds: "1000",
+                          vis: 0,
+                        },
+                      },
+                    },
+                    { parseJson: !0, timeout: 8e3 },
+                  );
+                if (!a || !a.ok || !a.json) return null;
+                const n = a.json,
+                  r = n.playbackTracking || {},
+                  o = n.playabilityStatus && n.playabilityStatus.status;
+                if (o && "OK" !== o && "LIVE_STREAM_OFFLINE" !== o) return null;
+                const i = n.videoDetails || {},
+                  d = parseInt(i.lengthSeconds || "0", 10) || 0;
+                return {
+                  playbackUrl: r.videostatsPlaybackUrl && r.videostatsPlaybackUrl.baseUrl,
+                  watchtimeUrl: r.videostatsWatchtimeUrl && r.videostatsWatchtimeUrl.baseUrl,
+                  atrUrl: r.atrUrl && r.atrUrl.baseUrl,
+                  qoeUrl: r.qoeUrl && r.qoeUrl.baseUrl,
+                  ptrackingUrl: r.ptrackingUrl && r.ptrackingUrl.baseUrl,
+                  delayplayUrl: r.videostatsDelayplayUrl && r.videostatsDelayplayUrl.baseUrl,
+                  lengthSec: d,
+                };
+              } catch (e) {
+                return null;
+              }
+            })(a);
+            if (!track || (!track.playbackUrl && !track.watchtimeUrl)) {
+              // Fall through to the hardcoded legacy endpoints
+              // below. They cover the same surface; if both fail the
+              // user will see a real toast (see the end of Kt()).
+              return;
+            }
+            const dur = track.lengthSec > 0 ? track.lengthSec : n,
+              half = Math.max(15, Math.floor(dur)),
+              tail = Math.max(1, half - 1);
+            let fired = 0;
+            try {
+              track.playbackUrl && (Qa(Za(Za(track.playbackUrl, "len", half), "rt", 0)), fired++);
+            } catch (e) {}
+            try {
+              track.atrUrl && (Qa(Za(Za(track.atrUrl, "len", half), "rt", 0)), fired++);
+            } catch (e) {}
+            try {
+              track.delayplayUrl && (Qa(track.delayplayUrl), fired++);
+            } catch (e) {}
+            if (track.watchtimeUrl) {
+              try {
+                const e = Math.max(5, Math.floor(half / 2));
+                Qa(
+                  Za(
+                    Za(
+                      Za(
+                        Za(Za(track.watchtimeUrl, "cmt", e), "et", e),
+                        "st",
+                        0,
+                      ),
+                      "mt",
+                      e,
+                    ),
+                    "state",
+                    "playing",
+                  ),
+                );
+                fired++;
+              } catch (e) {}
+              try {
+                Qa(
+                  Za(
+                    Za(
+                      Za(
+                        Za(Za(track.watchtimeUrl, "cmt", tail), "et", tail),
+                        "st",
+                        Math.max(0, tail - 5),
+                      ),
+                      "mt",
+                      tail,
+                    ),
+                    "state",
+                    "ended",
+                  ),
+                );
+                fired++;
+              } catch (e) {}
+            }
+            try {
+              track.qoeUrl && (Qa(Za(Za(track.qoeUrl, "cmt", tail), "rt", tail)), fired++);
+            } catch (e) {}
+            try {
+              track.ptrackingUrl && (Qa(track.ptrackingUrl), fired++);
+            } catch (e) {}
+            u("fw account-history tracking URLs fired: " + fired + " for " + a);
+          } catch (e) {
+            h("fw account-history player fetch", e);
+          }
+        })();
+      });
+    }
     const i = (function () {
         try {
           const e = ie.api();
@@ -7457,7 +7607,14 @@
       summary:
         "Mark the current video as watched without playing it. Press Shift+W and YouTube records the view straight away. The player won’t restart or rewind.",
       masterKey: "forceWatchedOn",
-      keys: ["forceWatchedOn"],
+      keys: [
+        "forceWatchedOn",
+        // v3.0.18.10 — split into the two on/off switches the channel
+        // version has. Listed as keys here so the Settings card for
+        // this feature shows the new toggles below.
+        "forceWatchedAccountHistory",
+        "forceWatchedLocalHistory",
+      ],
       apply() {},
       settings(e) {
         e.appendChild(
@@ -7470,6 +7627,22 @@
                 : pe("Open a video first.", 1500, "error");
             }),
           ]),
+        );
+        // v3.0.18.10 — let the user opt out of either half of the
+        // press. By default both are on, so the press updates both
+        // the local IDB history AND fires the YouTube Account
+        // History endpoints.
+        e.appendChild(
+          Io(
+            "Mark it in my YouTube history (Account History)",
+            "forceWatchedAccountHistory",
+          ),
+        );
+        e.appendChild(
+          Io(
+            "Also save to YT+ so it fades out of my feed right away",
+            "forceWatchedLocalHistory",
+          ),
         );
       },
     }),

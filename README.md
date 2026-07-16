@@ -15,6 +15,16 @@
 
 ---
 
+## What's new in v3.0.18.10
+
+- **"Force video as watched" hotkey (Shift+W) now reliably registers in YouTube Account History.** The single-video press used to fire only hardcoded legacy endpoints that relied on locally-constructed session params. These could silently fail to register if `cbrver`/`cver` drifted from the current YouTube session. v3.0.18.10 adds the per-video `playbackTracking` URL path that the channel-wide "Force channel as watched" already uses — `/youtubei/v1/player` is fetched to obtain the per-video `videostatsPlaybackUrl` / `videostatsWatchtimeUrl` / `atrUrl` / `qoeUrl` / `ptrackingUrl` / `videostatsDelayplayUrl`, then each one is fired via `sendBeacon`. The legacy endpoints stay as a belt-and-suspenders fallback. Both paths run on every press by default; the new `forceWatchedAccountHistory` toggle can disable the new path.
+- **Two new config flags** mirror the channel version's options:
+  - **`forceWatchedAccountHistory`** (default `true`) — when off, the player fetch and per-URL beacon sends are skipped.
+  - **`forceWatchedLocalHistory`** (default `true`) — when off, the local IDB row is left untouched; only the YouTube API endpoints fire.
+- **Toast feedback** — the single-video hotkey used to work silently. It now shows a 1.5s "Marked as watched." toast at the start of the press.
+- **Settings UI** for both new flags in the existing "Force Watched" feature card.
+- All 8 test suites pass: `test_sandbox`, `test_dashboard` (12), `test_update_check` (23), `test_sb` (30), `test_dm` (33), `test_hotkeys` (59), `test_memory` (59), **`test_force_watched` (23)**. **241 total checks.**
+
 ## What's new in v3.0.18.9
 
 - **"Check for updates" entry improvements** — the userscript-manager menu entry now does more than just say "up to date" or "failed":

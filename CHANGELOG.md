@@ -6,6 +6,31 @@ For the user-facing release notes and the README, see [README.md](README.md).
 
 ---
 
+## [3.0.18.10] - 2026-07-16
+
+### Fixed
+
+- **"Force video as watched" hotkey now reliably registers in YouTube Account History.** The single-video `Ut()` path (Shift+W) used to fire only the hardcoded legacy `/api/stats/*` and InnerTube endpoints. These rely on locally-constructed params (`cpn`, `cbrver`, `cver`, etc.) that can drift from the current YouTube session, causing the press to silently fail to register in the user's Account History page. v3.0.18.10 adds the per-video `playbackTracking` URL path that the channel-wide `nn()` already uses — the script fetches `/youtubei/v1/player` to obtain the per-video `videostatsPlaybackUrl` / `videostatsWatchtimeUrl` / `atrUrl` / `qoeUrl` / `ptrackingUrl` / `videostatsDelayplayUrl`, then fires each one via `sendBeacon`. The legacy endpoints are kept as a belt-and-suspenders fallback (some YT endpoints are more forgiving than others about missing session tokens). Both paths run on every press by default; the new `forceWatchedAccountHistory` toggle can disable the new path if the user wants only the local IDB update.
+
+### Added
+
+- **`forceWatchedAccountHistory` config flag** (default `true`) — mirrors `forceChannelWatchedAccountHistory`. When `false`, the player fetch and per-URL beacon sends are skipped; only the local IDB write + legacy hardcoded endpoints run.
+- **`forceWatchedLocalHistory` config flag** (default `true`) — mirrors `forceChannelWatchedLocalHistory`. When `false`, the local IDB row is left untouched; only the YouTube API endpoints fire.
+- **Toast feedback.** The single-video hotkey used to do the work silently; users couldn't tell whether the press actually fired. Now shows a 1.5s "Marked as watched." toast at the start of `Kt()`.
+- **Settings UI** for both new flags in the existing "Force Watched" feature card.
+
+### Tests
+
+- 241 total checks across 8 suites, all passing (up from 218 in v3.0.18.9). The new `test_force_watched.js` (23 checks) drives `Ut()` in jsdom with a mocked `ytcfg` + `fetch` + `navigator.sendBeacon`, then asserts:
+  - The two new config flags exist with the expected defaults.
+  - With both flags ON, a `POST /youtubei/v1/player` fetch goes out and the five `playbackTracking` URLs (playback / watchtime / atr / qoe / ptracking) are fired via `sendBeacon`.
+  - The watchtime fires for both `state=playing` and `state=ended`.
+  - With `forceWatchedAccountHistory=false`, no player fetch goes out and no `playbackTracking` beacons are sent.
+  - The toast element contains the expected text after the press.
+  - Source-grep regression guards confirm the new path uses `Ot('player', ...)` and `Qa()`, and the legacy `/api/stats/*` paths are still wired (belt-and-suspenders).
+
+---
+
 ## [3.0.18.9] - 2026-07-16
 
 ### Fixed / Improved

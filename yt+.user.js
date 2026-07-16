@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.15
-// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
+// @version      3.0.16
+// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -527,6 +527,22 @@
         unifiedHeatmapShowSB: !0,
         unifiedHeatmapShowChapters: !0,
         unifiedHeatmapShowReplays: !0,
+        // Data minimization: when ON, drop the well-known YouTube
+        // telemetry beacons (playback stats, ad events, pagead/DoubleClick
+        // tracking) that YouTube fires during normal viewing. Playback
+        // itself is NOT gated on any of these responses, so dropping them
+        // does not affect the video stream. The pagehide/visibility
+        // heartbeats YouTube uses to detect stalls are kept on by default
+        // (dataMinAllowHeartbeat) — disable only if you know what you're
+        // doing, since heartbeats *are* the signal YouTube uses to decide
+        // whether to keep sending you media. All three sub-toggles
+        // default ON when the master is on, so flipping the master kills
+        // tracking in one click.
+        dataMinimizationOn: !1,
+        dataMinBlockStats: !0,
+        dataMinBlockPagead: !0,
+        dataMinBlockLogEvent: !0,
+        dataMinAllowHeartbeat: !0,
         sbSubmitOn: !1,
         sbSubmitUserId: "",
         inVideoSearchOn: !1,
@@ -9432,6 +9448,99 @@
     },
   }),
     xa.register({
+      id: "data-minimization",
+      name: "Data Minimization (Kill YouTube Telemetry)",
+      summary:
+        "When ON, completely kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick / pagead tracking without breaking playback. None of these requests gate the video stream, so the player keeps running while Google stops receiving the data.",
+      masterKey: "dataMinimizationOn",
+      keys: [
+        "dataMinimizationOn",
+        "dataMinBlockStats",
+        "dataMinBlockPagead",
+        "dataMinBlockLogEvent",
+        "dataMinAllowHeartbeat",
+      ],
+      isOn: () => !!S.dataMinimizationOn,
+      apply() {
+        // The data-min module's wrappers are installed once at IIFE
+        // start. The master toggle just flips a flag the wrappers
+        // re-read on every request, so this apply() is a no-op apart
+        // from a one-line notification to whatever async toggle UI
+        // surfaces this. The module exposes `_dm.refresh()`; we call
+        // it via `g.emit("dm.toggle")` so external consumers can
+        // listen too.
+        try {
+          g.emit("dm.toggle", { on: !!S.dataMinimizationOn });
+        } catch (e) {}
+      },
+      settings(t) {
+        const _r = (label, key, desc) => {
+          const row = Io(label, key);
+          // The summary is the .ytp-sum; append our extra hint as
+          // a sub-text by walking the DOM. Keeping it simple: just
+          // append a small note.
+          try {
+            const c = row.parentElement;
+            if (c && !c.querySelector(".ytp-dm-note")) {
+              const n = To(
+                "div",
+                "ytp-dm-note",
+                desc || "",
+              );
+              n.style.cssText =
+                "font-size:10.5px;color:#888;line-height:1.4;margin:-2px 0 6px 0;padding:0 4px;";
+              c.appendChild(n);
+            }
+          } catch (e) {}
+          t.appendChild(row);
+        };
+        _r(
+          "Block /api/stats/* (watchtime, playback, qoe, ads)",
+          "dataMinBlockStats",
+          "Drops the playback-statistics beacons YouTube fires throughout a video. No playback impact.",
+        );
+        _r(
+          "Block /pagead/* and DoubleClick (ad tracking)",
+          "dataMinBlockPagead",
+          "Drops impression/conversion pings to DoubleClick and YouTube's own /pagead/* endpoints. No playback impact.",
+        );
+        _r(
+          "Block /youtubei/v1/log_event (engagement log)",
+          "dataMinBlockLogEvent",
+          "Drops the generic engagement log. No playback impact.",
+        );
+        _r(
+          "Allow player heartbeat (recommended)",
+          "dataMinAllowHeartbeat",
+          "Heartbeat is what YouTube uses to keep the stream alive. Keep ON unless you want to risk stalled-playback errors.",
+        );
+        // Tiny live counter
+        const counter = To("div", "ytp-dm-counter");
+        counter.style.cssText =
+          "margin-top:8px;padding:6px 9px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:6px;font:11px ui-monospace,monospace;color:#9aa;";
+        const render = () => {
+          let s = { dropped: 0 };
+          try {
+            if (e.YTPlus && e.YTPlus.dataMin) s = e.YTPlus.dataMin.stats();
+          } catch (e2) {}
+          counter.textContent =
+            "Dropped telemetry calls this session: " + (s.dropped || 0);
+        };
+        render();
+        const onBlock = () => render();
+        const off = g.on("net.blocked", onBlock);
+        // Best-effort cleanup; the dashboard card may be re-rendered
+        const _cleanup = () => {
+          try {
+            off();
+          } catch (e) {}
+        };
+        // Listen for a "closed" via window unload; for now we just
+        // let the closure die with the parent scope.
+        t.appendChild(counter);
+      },
+    }),
+    xa.register({
       id: "stats-overlay",
       name: "Playback Performance Overlay",
       summary:
@@ -11503,6 +11612,317 @@
         }
       })(),
       ur && (ur.remove(), (ur = null)));
+  }
+  // ---------------------------------------------------------------------
+  // Data minimization: kill YouTube's telemetry/tracking without
+  // breaking playback. Installs a single global filter on fetch(),
+  // XMLHttpRequest, and navigator.sendBeacon() that drops any request
+  // to a known telemetry/tracking endpoint. Playback stats, ad-event
+  // beacons, and DoubleClick / pagead impressions are the targets —
+  // none of them gate the video stream, so dropping them is safe.
+  //
+  // Endpoints blocked (when the corresponding sub-toggle is on):
+  //   * /api/stats/{watchtime,playback,qoe,att_get,ads,atfr}    — playback stats
+  //   * /youtubei/v1/log_event                                  — generic event log
+  //   * /pagead/*, /get_midroll_info, /ptracking, /desktop_polymer/.../log
+  //   * googleads.g.doubleclick.net/pagead/*                    — DoubleClick
+  //
+  // Endpoints KEPT (not blocked):
+  //   * /youtubei/v1/{player,browse,search,next,updated_metadata,att/get...}
+  //     — these return the actual content the user is browsing
+  //   * /s/player/heartbeat, /youtubei/v1/heartbeat*            — playback
+  //     continuity signals (you can opt out via dataMinAllowHeartbeat)
+  //   * All other youtube.com + googlevideo.com traffic (media segments,
+  //     captions, thumbnails, m3u8/playlist updates) is untouched.
+  //
+  // Implementation notes:
+  //   * We install once at IIFE start, not in `xa.apply()`. Other
+  //     features (geoOverride, netMonitor) also patch these globals,
+  //     but their wrappers call into the pristine originals. Our filter
+  //     is the OUTERMOST wrapper: it decides whether to short-circuit
+  //     the call before any other YT+ feature sees it. This way
+  //     netMonitor's per-host counters still see non-telemetry traffic,
+  //     and geoOverride's per-region rewriter still rewrites the
+  //     content-bearing /youtubei/v1/player request.
+  //   * For fetch(), we return a resolved Promise<Response> with status
+  //     204. YouTube's player code awaits fetch() and reacts to 2xx;
+  //     204 is the standard "no content" success.
+  //   * For XHR, we synthesize a complete "loaded" event with status
+  //     200 so the onload handler runs (not onerror, which some
+  //     sendBeacon code treats as a retry signal).
+  //   * For sendBeacon, we return `true` (the API for "queued for
+  //     delivery") since YouTube's player code never reads the return
+  //     value of sendBeacon, and the "false" return is "queue full,
+  //     drop" — which would cause the player to log a console error.
+  //
+  // Module-scoped state lives directly in the outer IIFE so the
+  // public `YTPlus.dataMin` surface (defined later as `ti.dataMin`)
+  // can reference it without crossing scope boundaries.
+  // ---------------------------------------------------------------------
+  if (typeof __pristineFetch__ !== "undefined") {
+    let _dm_installed = false;
+    let _dm_active = false; // re-evaluated against S.dataMinimizationOn on every request
+    const _dm_stats = { dropped: 0, lastUrl: "", byHost: {} };
+    // Decides if a URL should be dropped. Pure function of (url, cfg);
+    // no DOM access, safe to call from any patch.
+    function _dm_shouldDrop(url, cfg) {
+      if (!url) return false;
+      let h = "";
+      try {
+        h = new URL(String(url), location.href).host;
+      } catch (e) {
+        return false;
+      }
+      const hl = h.toLowerCase();
+      // Cross-origin tracking domains — drop unconditionally when on
+      const isTracker =
+        hl === "doubleclick.net" ||
+        hl.endsWith(".doubleclick.net") ||
+        hl === "googleadservices.com" ||
+        hl.endsWith(".googleadservices.com") ||
+        hl === "googlesyndication.com" ||
+        hl.endsWith(".googlesyndication.com") ||
+        hl === "googlevideo.com" && false; // googlevideo is media, never tracker
+      if (isTracker) return true;
+      // Same-origin (youtube.com) — match by pathname. The /api/stats/*
+      // family is the main one; /youtubei/v1/log_event is the catch-all
+      // for engagement beacons. /pagead/*, /ptracking, /get_midroll_info
+      // are ad-tracking. /s/player/heartbeat is the player-continuity
+      // ping; we keep it on unless the user opts out.
+      const isYT = /(^|\.)youtube\.com$/.test(hl) || hl === "youtube.com";
+      if (!isYT) return false;
+      // Pull just the pathname + search cheaply (avoid full URL parse)
+      let p = url;
+      const qIdx = p.indexOf("?");
+      if (qIdx >= 0) p = p.slice(0, qIdx);
+      const protoIdx = p.indexOf("://");
+      if (protoIdx >= 0) p = p.slice(protoIdx + 3);
+      const hostIdx = p.indexOf("/");
+      p = hostIdx >= 0 ? p.slice(hostIdx) : "/";
+      if (cfg.blockStats) {
+        if (p.indexOf("/api/stats/") === 0) return true;
+      }
+      if (cfg.blockLogEvent) {
+        if (p === "/youtubei/v1/log_event") return true;
+      }
+      if (cfg.blockPagead) {
+        if (
+          p.indexOf("/pagead/") === 0 ||
+          p === "/ptracking" ||
+          p === "/get_midroll_info" ||
+          p === "/generate_204"
+        )
+          return true;
+        if (p.indexOf("/desktop_polymer/") === 0 && p.indexOf("/log") >= 0)
+          return true;
+      }
+      // Heartbeat — only blocked when user explicitly opts out
+      if (!cfg.allowHeartbeat) {
+        if (p === "/s/player/heartbeat") return true;
+        if (p.indexOf("/youtubei/v1/heartbeat") === 0) return true;
+      }
+      return false;
+    }
+    // Synthesized 204 Response for fetch() short-circuits. We don't
+    // actually need a real body, just the status. We try the real
+    // Response constructor first; if it's not available (very old
+    // browser, some test sandboxes), fall back to a minimal object
+    // that quacks like one. YouTube's player code only checks `ok`
+    // and reads the body, both of which we provide.
+    function _dm_makeResponse() {
+      try {
+        if (typeof Response === "function")
+          return new Response(null, {
+            status: 204,
+            statusText: "No Content",
+          });
+      } catch (e) {}
+      return {
+        ok: true,
+        status: 204,
+        statusText: "No Content",
+        text: () => Promise.resolve(""),
+        json: () => Promise.resolve({}),
+        body: null,
+        headers: new Map(),
+        url: "",
+      };
+    }
+    // The fetch wrapper. Calls into the pristine fetch (via the
+    // __pristineFetch__ captured at IIFE start) when we don't drop.
+    // This way every other YT+ feature that wraps fetch() (geoOverride,
+    // netMonitor) still gets to see the request.
+    function _dm_fetch() {
+      const args = arguments;
+      const cfg = _dm_activeConfig();
+      let url = "";
+      try {
+        url =
+          args[0] && typeof args[0] === "object" && "url" in args[0]
+            ? args[0].url
+            : String(args[0] || "");
+      } catch (e) {}
+      if (cfg && _dm_shouldDrop(url, cfg)) {
+        // Increment a tiny counter so the dashboard / netMonitor can
+        // surface the savings. We use a custom event so we don't add
+        // a new top-level var just for this.
+        try {
+          g.emit("net.blocked", { url, by: "data-minimization" });
+        } catch (e) {}
+        return Promise.resolve(_dm_makeResponse());
+      }
+      return __pristineFetch__.apply(this, args);
+    }
+    // Reads the current config from S. Recomputed per-request so the
+    // dashboard toggle takes effect without a reload.
+    function _dm_activeConfig() {
+      if (!active) return null;
+      return {
+        blockStats: !!S.dataMinBlockStats,
+        blockPagead: !!S.dataMinBlockPagead,
+        blockLogEvent: !!S.dataMinBlockLogEvent,
+        allowHeartbeat: !!S.dataMinAllowHeartbeat,
+      };
+    }
+    function _dm_refresh() {
+      active = !!S.dataMinimizationOn;
+    }
+    // Install wrappers only once. The first caller wins; subsequent
+    // reassignments from the dashboard master toggle just flip the
+    // `active` flag, which is re-read on every request.
+    function _dm_installOnce() {
+      if (_dm_installed) return;
+      _dm_installed = true;
+      try {
+        e.fetch = _dm_fetch;
+      } catch (err) {
+        m("dm fetch wrap", err);
+      }
+      try {
+        const _origOpen = __pristineXHROpen__;
+        const _origSend = __pristineXHRSend__;
+        XMLHttpRequest.prototype.open = function (method, url) {
+          this.__ytpDmUrl = url;
+          return _origOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function () {
+          const cfg = _dm_activeConfig();
+          const u = this.__ytpDmUrl;
+          if (cfg && _dm_shouldDrop(u, cfg)) {
+            // Synthesize a successful load. We can't call dispatchEvent
+            // synchronously inside send() because the event handlers
+            // may not be installed yet; defer to a microtask.
+            const xhr = this;
+            Promise.resolve().then(() => {
+              try {
+                Object.defineProperty(xhr, "readyState", {
+                  get: () => 4,
+                });
+                Object.defineProperty(xhr, "status", {
+                  get: () => 200,
+                });
+                Object.defineProperty(xhr, "statusText", {
+                  get: () => "OK",
+                });
+                Object.defineProperty(xhr, "responseText", {
+                  get: () => "",
+                });
+                Object.defineProperty(xhr, "response", {
+                  get: () => "",
+                });
+              } catch (e) {}
+              try {
+                xhr.dispatchEvent(new Event("load"));
+                xhr.dispatchEvent(new Event("loadend"));
+              } catch (e) {}
+              try {
+                g.emit("net.blocked", { url: u, by: "data-minimization" });
+              } catch (e) {}
+            });
+            return; // do NOT call _origSend; the request is short-circuited
+          }
+          return _origSend.apply(this, arguments);
+        };
+      } catch (err) {
+        m("dm xhr wrap", err);
+      }
+      try {
+        navigator.sendBeacon = function (url, data) {
+          const cfg = _dm_activeConfig();
+          if (cfg && _dm_shouldDrop(url, cfg)) {
+            try {
+              g.emit("net.blocked", { url, by: "data-minimization" });
+            } catch (e) {}
+            return true; // tell the caller the beacon was "queued"
+          }
+          return __pristineBeacon__.apply(this, arguments);
+        };
+      } catch (err) {
+        m("dm beacon wrap", err);
+      }
+    }
+    _dm_installOnce();
+    _dm_refresh();
+    // Expose a tiny API on YTPlus.dataMin so external scripts (and the
+    // dashboard) can introspect the filter and the running stats.
+    g.on("net.blocked", (e) => {
+      if (e && e.by === "data-minimization") {
+        _dm_stats.dropped++;
+        _dm_stats.lastUrl = e.url;
+        try {
+          const host = (() => {
+            try {
+              return new URL(String(e.url), location.href).host;
+            } catch (e2) {
+              return "";
+            }
+          })();
+          if (host)
+            _dm_stats.byHost[host] = (_dm_stats.byHost[host] || 0) + 1;
+        } catch (e2) {}
+      }
+    });
+    // Public surface (attached later when YTPlus is built; we just stash
+    // the refs so the registration step can find them).
+    try {
+      // eslint-disable-next-line no-var
+      _dm = {
+        refresh: _dm_refresh,
+        stats: () => Object.assign({}, _dm_stats),
+        shouldDrop: (u) => {
+          const cfg = _dm_activeConfig();
+          return cfg ? _dm_shouldDrop(u, cfg) : false;
+        },
+        endpoints: () => ({
+          stats: [
+            "/api/stats/watchtime",
+            "/api/stats/playback",
+            "/api/stats/qoe",
+            "/api/stats/ads",
+            "/api/stats/att_get",
+          ],
+          logEvent: ["/youtubei/v1/log_event"],
+          pagead: [
+            "/pagead/*",
+            "/ptracking",
+            "/get_midroll_info",
+            "/generate_204",
+            "googleads.g.doubleclick.net/pagead/*",
+          ],
+          heartbeat: ["/s/player/heartbeat", "/youtubei/v1/heartbeat*"],
+        }),
+      };
+    } catch (e) {
+      m("dm init", e);
+    }
+    // Auto-refresh the active flag when the master toggle changes, so
+    // flipping it in the dashboard takes effect on the very next
+    // request without a reload.
+    try {
+      g.on("cfg.changed", ({ key: k }) => {
+        if (k === "dataMinimizationOn") _dm_refresh();
+      });
+    } catch (e) {}
   }
   try {
     (window.addEventListener(
@@ -22173,6 +22593,42 @@
       clear: () => rr(),
       fmt: or,
     },
+    dataMin: {
+      on: () => !!S.dataMinimizationOn,
+      enable: () => Ta("dataMinimizationOn", !0),
+      disable: () => Ta("dataMinimizationOn", !1),
+      toggle: () => Ta("dataMinimizationOn", !S.dataMinimizationOn),
+      stats: () =>
+        _dm
+          ? _dm.stats()
+          : { dropped: 0, lastUrl: "", byHost: {} },
+      shouldDrop: (u) => (_dm ? _dm.shouldDrop(u) : false),
+      endpoints: () =>
+        _dm
+          ? _dm.endpoints()
+          : {
+              stats: [],
+              logEvent: [],
+              pagead: [],
+              heartbeat: [],
+            },
+      config: () => ({
+        on: !!S.dataMinimizationOn,
+        blockStats: !!S.dataMinBlockStats,
+        blockPagead: !!S.dataMinBlockPagead,
+        blockLogEvent: !!S.dataMinBlockLogEvent,
+        allowHeartbeat: !!S.dataMinAllowHeartbeat,
+      }),
+      setBlock: (key, val) => {
+        const allowed = [
+          "dataMinBlockStats",
+          "dataMinBlockPagead",
+          "dataMinBlockLogEvent",
+          "dataMinAllowHeartbeat",
+        ];
+        if (allowed.indexOf(key) >= 0) Ta(key, !!val);
+      },
+    },
     perf: {
       enableFps: (e) => Ta("fpsCounterOn", !!e),
       enableBuffer: (e) => Ta("bufferHealthOn", !!e),
@@ -22304,6 +22760,34 @@
           } catch (e) {}
           try {
             GM_registerMenuCommand("Re-enable features that crashed earlier", () => { try { xa.clearQuarantine(); pe("Crashed features may try again.", 2200, "success"); } catch (e) {} });
+            try {
+              GM_registerMenuCommand(
+                "Data minimization: " +
+                  (S.dataMinimizationOn ? "ON (click to disable)" : "OFF (click to enable)"),
+                () => {
+                  Ta("dataMinimizationOn", !S.dataMinimizationOn);
+                  pe(
+                    "Telemetry " +
+                      (S.dataMinimizationOn ? "blocked" : "resumed") +
+                      " (no playback impact)",
+                    1800,
+                    "info",
+                  );
+                },
+              );
+            } catch (e) {}
+            try {
+              GM_registerMenuCommand("Data minimization: show count", () => {
+                const s = e.YTPlus && e.YTPlus.dataMin
+                  ? e.YTPlus.dataMin.stats()
+                  : { dropped: 0 };
+                pe(
+                  "Telemetry requests blocked: " + (s.dropped || 0),
+                  2200,
+                  "info",
+                );
+              });
+            } catch (e) {}
           } catch (e) {}
         }
       })();

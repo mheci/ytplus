@@ -2,9 +2,9 @@
 
 # YT+
 
-**Make YouTube yours.** A single userscript that fixes the ads, kills the clutter, themes the site, captures screenshots, skips sponsors, remembers where you stopped, and gives you back the keyboard.
+**Make YouTube yours.** A single userscript that fixes the ads, kills the clutter, kills the telemetry, themes the site, captures screenshots, skips sponsors, remembers where you stopped, and gives you back the keyboard.
 
-[![Version](https://img.shields.io/badge/version-3.0.11-ff3d7f)](#whats-new)
+[![Version](https://img.shields.io/badge/version-3.0.16-ff3d7f)](#whats-new)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Greasy Fork compatible](https://img.shields.io/badge/greasyfork-compatible-success)](https://greasyfork.org)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](yt+.user.js)
@@ -15,15 +15,17 @@
 
 ---
 
-## What's new in v3.0.11
+## What's new in v3.0.16
 
-- **Dashboard GUI is now GPU-accelerated, opaque, and crisp** — the dashboard panel had a transparent background that let YouTube's busy content bleed through, light text on light gradient, and the browser was repainting the whole thing on every animation tick. The patch:
-  - Background opacity bumped from 55% to 82% (text no longer bleeds through)
-  - Backdrop blur increased from 22px to 32px, with a contrast() filter for crisper text
-  - Added a 200×200 SVG noise texture as an overlay (frosted-glass grain)
-  - All animated elements get their own GPU layer via `will-change`, scoped repaints via `contain`, and `backface-visibility: hidden` so the entrance animation runs at the display's native refresh rate
-  - Text color bumped from `#eef` to `#f5f7fb` with subtle `text-shadow` for legibility
-  - Section headers, labels, and tabs all get lifted to a more readable shade
+- **Data minimization** *(the headline feature)* — a single master toggle in the dashboard that, when ON, completely kills YouTube's outbound telemetry and tracking without breaking playback. Internally wraps `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon` at the outermost layer (outside the `geoOverride` and `netMonitor` wrappers) and short-circuits requests to:
+  - `/api/stats/*` (watchtime, playback, qoe, ads, att_get)
+  - `/youtubei/v1/log_event` (the engagement beacon — the biggest one)
+  - `/pagead/*` and any `googleads.g.doubleclick.net`, `googleadservices.com`, `googlesyndication.com` request
+  - `/ptracking`, `/get_midroll_info`, `/generate_204`, and the desktop polymer log endpoint
+  - Player heartbeats (off by default — keep ON so YouTube keeps the stream alive)
+  - Replaced with a synthetic 204 Response (fetch), `true` return value (sendBeacon), or a fake `load`/`loadend` event (XHR). Player code doesn't gate playback on any of these, so killing them is invisible to the video. **Opt-in by default** — a behavior change should never be on at install time.
+  - Live "X requests blocked" counter with a per-host breakdown, four sub-toggles (block stats / block pagead / block log_event / allow heartbeat), and a `YTPlus.dataMin.shouldDrop(url)` API for external scripts to test before issuing a request.
+- **SponsorBlock overhaul** *(v3.0.14–v3.0.15)* — two new categories (chapter, hook), four action types (skip / mute / poi / chapter), all nine `/api/skipSegments` filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), a public instance picker (Ajay / Lunar / minastyr / Matt / Tatu / Custom), per-segment and per-channel override editors, color override per category, an "up next" preview chip ("Sponsor in 12s"), a user-stats HUD, vote / edit / ignore / hide / lock / viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff on 429/5xx, and a 1-hour cache TTL with cache-warm-on-config-change.
 
 For everything that came before this, see the [release history](#release-history).
 
@@ -34,7 +36,7 @@ For everything that came before this, see the [release history](#release-history
 1. Install a userscript manager:
    - [Tampermonkey](https://www.tampermonkey.net/) (Chrome, Firefox, Edge, Safari, Opera)
    - [Violentmonkey](https://violentmonkey.github.io/) (Firefox, Chrome, Edge)
-   - [Greasemonkey 4](https://www.greasespot.net/) (Firefox only)
+   - [Greasemonkey 4](https://www.greasemonkey.net/) (Firefox only)
 2. Click the install link at the top of this page.
 3. Confirm the install prompt.
 
@@ -57,6 +59,8 @@ YT+ updates itself. There are two paths:
 
 The script also re-checks for updates every 6 hours while it's running.
 
+> **Note:** the in-script update check parses both the installed version and the latest tag into integer arrays (`[3,0,16]` vs `"3.0.16"`) before comparison. The previous character-by-character compare falsely reported an update for any version with a two-digit last segment. Fixed in v3.0.13.
+
 ## Works on
 
 - **YouTube** — `https://www.youtube.com/*`
@@ -69,20 +73,29 @@ The script also re-checks for updates every 6 hours while it's running.
 YT+ runs entirely in your browser. It stores settings and watch history locally using IndexedDB. The only network calls it makes are:
 
 - **YouTube itself** — to play videos (obviously)
-- **SponsorBlock** (`sponsor.ajay.app`) — to fetch sponsorship segment data, and to submit segments when you contribute one
+- **SponsorBlock** (`sponsor.ajay.app` by default — the instance is user-selectable) — to fetch sponsorship segment data, and to submit segments when you contribute one
 - **GitHub API** (`api.github.com`) — a single lightweight call when you trigger "Check for updates" (once every 6 hours at most)
 
 No analytics, no tracking, no third-party scripts, no remote CSS, no fonts loaded from CDNs. Your data is yours.
+
+**If you want more privacy than that**, enable **Data minimization** in the dashboard (see [What's new](#whats-new-in-v3016)). When ON, YT+ short-circuits the well-known YouTube telemetry endpoints at the network layer, so the data never leaves your browser in the first place — not just the ones YT+ uses, but any code running in the YouTube page.
 
 ---
 
 ## Features
 
-YT+ has **107 features** grouped into 14 categories. Every feature is off by default except where noted, and every one is gated behind its own toggle in the dashboard so you can pick exactly what you want.
+YT+ has **120+ features** grouped into 16 categories. Every feature is off by default except where noted, and every one is gated behind its own toggle in the dashboard so you can pick exactly what you want.
+
+### Privacy & Telemetry
+
+- **Data Minimization** *(new in v3.0.16)* — kills YouTube's outbound telemetry, ad-event beacons, and DoubleClick / pagead tracking without breaking playback. One master toggle, four sub-toggles, live counter, `YTPlus.dataMin.shouldDrop(url)` API.
+- **Private Mode** — disables all network calls (SponsorBlock, screenshots, etc) and clears the watch history.
+- **Country & Language Override** — fake your locale for YouTube, including safe-search, restricted mode, language, region, and timezone. Patches `navigator`, `fetch`, `XMLHttpRequest`, and `sendBeacon`.
+- **Safe Mode** — kill-switch for all SponsorBlock traffic in case of incident.
 
 ### Playback
 
-- **SponsorBlock** — auto-skip sponsored segments, intros, outros, self-promos, filler, and more. You pick which categories to skip and what to do with each (skip, mute, disable).
+- **SponsorBlock** *(overhauled in v3.0.14)* — auto-skip sponsored segments, intros, outros, self-promos, filler, and more. You pick which categories to skip and what to do with each (skip, mute, disable). 12 categories, 6 action types, per-segment and per-channel overrides, color overrides, "up next" preview chip, user-stats HUD, public instance picker.
 - **Speed Controller** — playback speed slider, per-video memory (set 1.5× for podcasts, etc.), keyboard shortcuts.
 - **Loop Video** — single-key loop.
 - **A-B Repeat** — loop a custom segment (set start, set end, it loops forever until you stop).
@@ -91,7 +104,6 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 - **Always Use My Preferred Quality** — set it once, never think about it again.
 - **Skip Intro** — skip the first N seconds of every video.
 - **Always Turn On Captions** — force-enable captions, pick language, font, size, color, background, opacity, edge style, position, line height, letter spacing. 100+ fonts with live previews.
-- **Default Volume** — set a default volume for every video (e.g. 80%) so you don't get blasted by 100%.
 - **Volume Boost** — boost past YouTube's 100% cap (up to 4×).
 - **Audio Normalize** — keep loud and quiet parts evened out.
 - **Scroll-Wheel Volume** — hover the player and scroll to change volume.
@@ -99,15 +111,11 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 - **Mute Ads** — automatically mute the player during ads.
 - **Speed Through Ads** — set ads to 16× speed so they finish instantly.
 
-### Ads
-
-- All three ad features above work together. They quarantine themselves automatically if YouTube changes the ad DOM.
-
 ### History & Sessions
 
-- **Session History** — every video you watch is recorded with timestamps, watch count, watch time, completion status. Resume where you left off in any of them.
+- **Session History** — every video you watch is recorded with timestamps, watch count, watch time, completion status. Resume where you left off in any of them. Full oEmbed backfill for entries with empty title/channel.
 - **Force Watched** — mark the current video as fully watched with `Shift+W`.
-- **Force Channel as Watched** — batch-mark every video in a channel as watched.
+- **Force Channel as Watched** — batch-mark every video in a channel as watched, with concurrency control and aggressive-completion mode.
 - **Session Summary** — a glass card on the dashboard with your most-watched channels, total watch time, and completion rate.
 - **Watched Feed Videos** — dim or hide videos you've already finished in the home feed.
 - **Watch Stats** — daily / weekly stats, watch goals, and streaks.
@@ -116,7 +124,7 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 
 - **Always Turn On Captions** — see above.
 - **Subtitle Translation** — translate non-English captions into your target language.
-- **In-Video Search** *(new in v3.0.4)* — search the current video's captions with **Ctrl+F**. Matches appear as red marks on a timeline strip and a scrollable list. Click any match to seek.
+- **In-Video Search** — search the current video's captions with **Ctrl+F**. Matches appear as red marks on a timeline strip and a scrollable list. Click any match to seek.
 
 ### Bookmarks & Clips
 
@@ -130,7 +138,7 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 ### UI & Theme
 
 - **Theme Engine** — 126 themes (60+ dark, 60+ light). Catppuccin, Dracula, Nord, Gruvbox, Rose Pine, Tokyo Night, Solarized, and many more. Each is a full YouTube theme — masthead, sidebar, player chrome, comments, everything.
-- **Glassmorphism Overhaul** *(new in v3.0.4)* — opt-in site-wide glass styling. Only touches the chrome (masthead, sidebar, chips, popups). Doesn't break the player or the home grid like the previous attempt did.
+- **Glassmorphism Overhaul** — opt-in site-wide glass styling. Only touches the chrome (masthead, sidebar, chips, popups). Doesn't break the player or the home grid.
 - **Theater Mode Default** — start every video in theater mode.
 - **Theater Mode on Wide Screens** — auto-engage theater when the window is wide.
 - **Cinema Mode** — fullscreen + dim + reduce UI.
@@ -157,13 +165,11 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 - **Hide Premieres** — hide upcoming premiere listings.
 - **Channel Blocker** — block specific channels entirely (with regex support).
 - **Keyword Filter** — hide any video whose title contains a banned word.
-- **Hide Page Elements** — point-and-click to hide any DOM element on any YouTube page.
-- **Remote Selectors** — sync your element-hiding rules across devices via a GitHub gist or private URL.
+- **Hide Page Elements** — point-and-click to hide any DOM element on any YouTube page. 8 quick presets, individual item list, live preview on hover.
+- **Remote Selectors** — sync your element-hiding rules across devices via a GitHub gist or private URL, SHA-256 verified.
 - **Block YouTube AI** — hide all the new AI features (AI summaries, "Ask" button, etc).
-- **Feed Card Filters** — auto-hide Shorts, livestreams, upcoming, mixes, etc, in one click.
 - **Watch Later Shortcut** — fast-add to Watch Later with a custom key.
 - **Subscribe Shortcut** — fast-subscribe with a custom key.
-- **Subscribe Confirm** — ask before subscribing (so you don't accidentally subscribe to spam).
 
 ### Player Extras
 
@@ -172,17 +178,14 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 - **Screenshot Strip** — auto-capture 6 frames over 2 seconds, pick the best.
 - **Quick Screenshot Region** — drag a rectangle on the video to capture only that area.
 - **Stop Button** — a big "Stop" button that pauses AND resets to 0, distinct from pause.
-- **Theater Glow** — subtle red glow around the player in theater mode.
-- **Player Mini Map** — see a tiny progress preview in the corner.
 - **Player Buttons** — extra buttons next to the player's existing controls (stop, watch-later quick-add, etc).
-- **Scrubber Preview Fix** — fixes the broken hover-preview on the progress bar.
 - **Subtitle Translate Target** — pick your default translation target.
 - **Read Aloud** — TTS reads the captions out loud.
 - **Reaction Picker** — quick-access emoji reactions.
 - **Sub Auto Like** — auto-like videos you watched to the end of.
 - **Watch Later Smart Sort** — sort your Watch Later by length, channel, etc.
 
-### Captions & Annotations
+### Player Behavior
 
 - **Always Show Progress Bar** — keeps the player's progress bar visible all the time.
 - **Auto Expand Description** — clicks "Show more" on every video automatically.
@@ -198,7 +201,6 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 
 - **Chapter Hotkeys** — jump to the next / previous chapter.
 - **Chapter Buttons** — chapter list overlay for quick navigation.
-- **Chapter Loop** — loop the current chapter.
 - **Chapter List Panel** — floating panel with the full chapter list and durations.
 - **Most-Replayed Heatmap** — overlay YouTube's most-replayed heatmap on the seek bar.
 - **Unified Heatmap** — overlay that combines SponsorBlock segments, chapters, and your personal replay history into one timeline.
@@ -208,22 +210,16 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 - **Playback Performance Overlay** — live FPS, decode time, buffer health, dropped frames.
 - **Activity Monitor** — log of every script action, with error capture and a "re-enable quarantined features" button.
 - **Feature Performance Tracker** — per-feature apply time, interval count, and max time.
-- **Click & Navigation Recorder** — record every click and `yt-navigate-*` event for debugging.
-- **Developer Player Control** — click any player method in a tree, see its return value.
-- **Data Usage Tracker** — per-host request log, request count, byte count, budget alerts.
+- **Data Usage Tracker** — per-host request log, request count, byte count, budget alerts. Built-in charts and a daily quota.
 - **Adaptive Throttle** — automatically slows down the script when the device is under load (document.hidden, low memory, save-data mode, etc).
-- **Private Mode** — disables all network calls (SponsorBlock, screenshots, etc) and clears the watch history.
 - **API Explorer** — explore the YouTube IFrame API and call any method.
-- **Remote Selectors** — pull your hide-element rules from a remote URL.
 - **SponsorBlock Submit** — submit sponsorship segments you've marked (with a live preview ribbon before submit).
 - **Audio Waveform** — see the audio waveform over the player.
 
 ### Time Tools
 
 - **Sleep Timer** — auto-pause after N minutes.
-- **Sleep Schedule** — auto-pause during a daily time window (e.g. "stop playing after 11pm").
 - **Watch Goal** — daily/weekly minute goals with progress on the dashboard.
-- **Watch History Heatmap** — 53×7 heatmap of when you watch what.
 
 ### Comments
 
@@ -231,7 +227,6 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 - **Collapse Long Comments** — auto-collapse comments over N characters with a "Read more" button.
 - **Highlight Creator Comments** — pin / accent comments from the video's creator.
 - **Highlight Timestamp Links** — make timestamp links in comments visually distinct.
-- **Auto-Expand Description** — see above.
 
 ### Shorts
 
@@ -239,38 +234,38 @@ YT+ has **107 features** grouped into 14 categories. Every feature is off by def
 - **Redirect Shorts to Normal** — open regular YouTube videos instead of Shorts URLs.
 - **Shorts Auto Mute / Hide Comments** — see above.
 
-### Geo / Locale
-
-- **Country & Language Override** — fake your locale for YouTube, including safe-search, restricted mode, language, region, and timezone. Patches `navigator`, `fetch`, `XMLHttpRequest`, and `sendBeacon`.
-
 ### Keyboard
 
 - **Custom Keyboard Shortcuts** — every built-in action is rebindable. Click a key in the dashboard, press a new combo, it's saved. Conflicts are detected.
 - **Keyboard Cheat Sheet** — press `?` to see every shortcut.
-- **Tab Title Progress** — show watch progress in the tab title (e.g. `▶ 45% — Video Title`).
 
 ### Dashboard
 
-- **Glass dashboard** — translucent dark, blurred background, gradient borders, accent glow.
+- **Glass dashboard** — translucent dark, blurred background, gradient borders, accent glow. GPU-accelerated with `will-change` and `contain` for 144Hz+ monitor support (perf fix in v3.0.12).
 - **Search** — quick-jump to any feature by name.
 - **Draggable & resizable** — drag the header to move, drag the bottom-right corner to resize.
 - **Settings preserved per-feature** — every feature has its own collapsible settings block.
-- **Export / Import** — back up your entire config to a JSON file. Re-import on a new device.
+- **Export / Import** — back up your entire config + history + bookmarks to a JSON file. Re-import on a new device.
 
 ---
 
 ## Default menu
 
-When you install YT+, the userscript manager's menu gains eight commands:
+When you install YT+, the userscript manager's menu gains ten commands:
 
 1. **Open YT+ dashboard** (`Alt+Y`)
 2. **Mark this video as watched** (`Shift+W`)
 3. **Toggle SponsorBlock on/off**
-4. **Bookmark this moment**
-5. **Check for updates**
-6. **Export settings to file**
-7. **Import settings from file**
-8. **Re-enable features that crashed earlier**
+4. **SponsorBlock: reload segments** (current video)
+5. **SponsorBlock: hide on this video**
+6. **SponsorBlock: show my stats**
+7. **Bookmark this moment**
+8. **Check for updates**
+9. **Export settings to file**
+10. **Import settings from file**
+11. **Re-enable features that crashed earlier**
+12. **Data minimization: ON / OFF** *(click to toggle)*
+13. **Data minimization: show count**
 
 Every one of those except the dashboard toggle is also available as a hotkey once enabled.
 
@@ -278,27 +273,33 @@ Every one of those except the dashboard toggle is also available as a hotkey onc
 
 ## Architecture
 
-YT+ is a single ~750 KB userscript. Its structure:
+YT+ is a single ~835 KB userscript (~23,000 lines). Its structure:
 
 - **IIFE wrapper** with `"use strict"` so nothing leaks to the page.
 - **A `S` config object** with 250+ keys, validated and sanitized on every load.
 - **A `xa` (feature registry)** that lets each feature register a name, summary, master key, list of keys to re-apply on, an `apply(ctx)` function, and a `settings(div)` function.
 - **A `ctx` (feature scope)** with helpers like `addStyle()`, `addListener()`, `addInterval()`, `addTimeout()`, `addObserver()`, `onNav()`, and `addRAF()` — all auto-cleaned up when the feature is disabled or the tab unloads.
 - **An IDB layer** (`ytplus_v2` v3) for settings, history, bookmarks, replay history, thumbnails, network buckets, notes, and queue. Cross-tab sync via `BroadcastChannel`.
-- **A `fu`/`pe`/etc. mini library** for throttle, debounce, format bytes, format time, memoize, fetch with `@connect` enforcement, and a glass toast system.
+- **A mini library** for throttle, debounce, format bytes, format time, memoize, fetch with `@connect` enforcement, and a glass toast system.
 - **A single CSS string** embedded as a JS string literal, registered on the first `apply()` and edited on every `cfg.changed` event.
+- **Data minimization layer** *(v3.0.16)* — the outermost wrapper on `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon`. Installed at IIFE start so it sits *above* the `geoOverride` and `netMonitor` wrappers (which still see content traffic). The pristine original functions are saved as `__pristineFetch__`, `__pristineXHROpen__`, `__pristineXHRSend__`, `__pristineBeacon__` for the inner wrappers to call through.
+- **Public API surface on `window.YTPlus`** — `YTPlus.cfg` (proxy), `YTPlus.setCfg(key, val)`, `YTPlus.features`, `YTPlus.bus`, `YTPlus.sb.*` (SponsorBlock controls), `YTPlus.net.*` (network monitor), `YTPlus.dataMin.*` (data minimization: `on`, `off`, `toggle`, `stats`, `shouldDrop`, `endpoints`, `config`, `setBlock`), `YTPlus.history.*` (history ops), `YTPlus.diagnostics.snapshot()`.
 
 ## Performance
 
-YT+ is designed to add less than 30ms to your YouTube page load, use less than 25 MB of RAM at idle, and zero CPU when the tab is hidden. The Adaptive Throttle feature can stretch those numbers further on low-end devices.
+YT+ is designed to add less than 30ms to your YouTube page load, use less than 25 MB of RAM at idle, and zero CPU when the tab is hidden. The Adaptive Throttle feature can stretch those numbers further on low-end devices. The dashboard itself was tuned in v3.0.12 to use GPU layers and `contain` so the panel moves 1:1 with the cursor on 144Hz+ monitors.
 
 ## Testing
 
-Each release is verified against:
+Each release is verified against five test suites:
 
-- `node --check` on the userscript
-- A JSDOM-based sandbox that mocks all `GM_*` APIs and counts registered features, registered menu items, and any thrown errors
-- A functional test of every added feature's core logic (caption parser, semver comparator, HTML entity decoder, etc)
+- `test_sandbox.js` — JSDOM-based smoke test that mocks all `GM_*` APIs and counts registered features, registered menu items, and any thrown errors
+- `test_dashboard.js` — dashboard perf benchmarks
+- `test_update_check.js` — version comparator edge cases (the `"3.0.12"[2] === "2"` bug)
+- `test_sb.js` — SponsorBlock filters, action resolution, cache key derivation
+- `test_dm.js` — data minimization: master toggle, sub-toggles, XHR/fetch/beacon short-circuit, byHost tracking, `shouldDrop()` API, public surface, master re-arm
+
+Run them with `node test_*.js` (requires `npm install` for the `jsdom` dependency).
 
 ## Contributing
 
@@ -314,7 +315,27 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.4 *(current)*
+### v3.0.16 *(current)*
+- **Data minimization** — master toggle + 4 sub-toggles; outer wrapper on fetch / XHR / sendBeacon; live counter; `YTPlus.dataMin` API; 33-test suite
+- SponsorBlock chapter rules and color override exposed (logic finalized)
+- Documentation pass for the dashboard
+
+### v3.0.15
+- Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute.
+
+### v3.0.14
+- Major SponsorBlock expansion — 2 new categories (chapter, hook), 4 action types, all 9 `/api/skipSegments` filters, public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote / edit / ignore / hide / lock / viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL.
+
+### v3.0.13
+- Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so `"3.0.12"[2] === "2"` caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison.
+
+### v3.0.12
+- Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
+
+### v3.0.11
+- Dashboard GUI opaque and crisp — opacity 55%→82%, blur 22px→32px, SVG noise overlay, GPU layers via `will-change` / `contain` / `backface-visibility: hidden`, text bumped to `#f5f7fb` with `text-shadow`.
+
+### v3.0.4
 - Font dropdown CSS fixed (130 fonts now searchable and scrollable)
 - Theme overhaul is sane (chrome-only, no longer breaks the home grid)
 - In-Video Search: search captions with Ctrl+F

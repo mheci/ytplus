@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.12
+// @version      3.0.13
 // @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
@@ -781,7 +781,20 @@
       while (b.length < 3) b.push(0);
       return b;
     };
-    const o = (a, b) => { for (let i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1; } return 0; };
+    // Compare two versions. Both sides are normalized to parsed
+    // integer arrays via a() so that "3.0.12" and [3,0,12] compare
+    // correctly (previously a raw string like n = "3.0.12" was
+    // indexed as characters, so "3.0.12"[2] === "2" rather than 12,
+    // which falsely reported an update for any version with a
+    // two-digit last segment).
+    const o = (x, y) => {
+      const A = Array.isArray(x) ? x : a(x);
+      const B = Array.isArray(y) ? y : a(y);
+      for (let i = 0; i < 3; i++) {
+        if (A[i] !== B[i]) return A[i] < B[i] ? -1 : 1;
+      }
+      return 0;
+    };
     const showUpdateAvailable = (latestTag, installUrl) => {
       // Big toast + a sticky clickable banner so the user can't miss it.
       pe("YT+ " + latestTag + " available (you have " + t + ")", 4000, "info");
@@ -811,7 +824,13 @@
     };
     const showResult = (latestTag, installUrl) => {
       const latest = a(latestTag);
-      const cmp = o(latest, n);
+      // Parse the installed version through a() too. n is a string
+      // like "3.0.12"; o() can now handle a string directly, but
+      // parsing here keeps the call site self-documenting and means
+      // the result is correct even if o() is later refactored to
+      // require arrays.
+      const installed = a(n);
+      const cmp = o(latest, installed);
       if (cmp <= 0) {
         e && pe("YT+ is up to date (" + t + ").", 2400, "success");
       } else {

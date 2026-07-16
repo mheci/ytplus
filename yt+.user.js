@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.18.7
-// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.7: Audit fixes from a second, deeper pass. (1) The "Custom Keyboard Shortcuts" panel leaked a keydown listener on every re-capture: clicking button A (start capture), then clicking button B without pressing a key, would leave A's `document.addEventListener("keydown", a, true)` attached. The next keypress then fired BOTH handlers, and BOTH buttons got rebound to the same key. Now the previous capture's handler is explicitly removed when a new capture starts. (2) The dashboard search filter could dereference `a.name` on a stale `data-feat` card (a card whose feature was removed between renders). The previous code threw `TypeError: Cannot read properties of undefined` on every keystroke. Now the card is hidden silently and the search continues with the remaining cards. No behavior change for fresh renders. All 7 test suites pass (203 checks). No new features; pure bug fixes from a second line-by-line audit pass. v3.0.18.6: Audit fixes. (1) The "Import settings from file" Tampermonkey menu command was calling `Mo()` — a button-builder helper, not an import function — so clicking it did nothing useful. Now wires to `Xo()`, the real `<input type="file">` -> FileReader -> JSON.parse import path. (2) The SponsorBlock mute path had `St_perCat[r] = (St_perCat[r] || 0) + 0;` — a no-op that meant muted segments never incremented the per-category count and the "saved" time was never accumulated. Now mirrors the skip path: counts the muted segment once via the `it` Set guard, accumulates the saved time, and emits the same HUD rollup. (3) `S.ccTextColor` was being interpolated raw into the generated caption CSS in two places. If a user typed an invalid hex (typo, paste of "rgb(...)", or — much worse — a string containing `}` and a new rule) the stylesheet silently broke. Now sanitized to a valid `#rgb` or `#rrggbb` before interpolation, falling back to white on parse failure. (4) `S.idleDimBlur` had the same class of issue — raw into CSS. Clamped to the [1, 20] range the dashboard exposes. (5) The update-available banner built its inner HTML with the GitHub release tag interpolated raw via innerHTML. Self-XSS only (the tag is maintainer-controlled), but rebuilt the banner with textContent / createTextNode for defense-in-depth. All 7 test suites pass (203 checks). No new features; pure bug fixes from a line-by-line audit. Known feature gap: `sbChapterRules` (chapter skip rules per channel) is collected but never applied — out of scope for this release. v3.0.18.5: SponsorBlock privacy-mode fix. Since v3.0.14 the SB post-fetch lookup searched the response for `p.hash === hash`, but the SponsorBlock server actually returns `{videoID, segments}` entries — the `hash` field never existed. Privacy mode (default ON) silently returned zero segments for every video because the lookup never matched, even though the server's response had the data. v3.0.18.3 / v3.0.18.4's _dm ReferenceError masked this bug because the whole script crashed before SB ever ran, so it only surfaced once v3.0.18.4 actually loaded. Fix: look up by `p.videoID === e` (the videoId passed into the fetcher). One-line change; no behavior difference for non-privacy mode (which is unaffected). v3.0.18.4: CRITICAL freeze fix. v3.0.18.3 had a ReferenceError in the data-minimization IIFE: the outer `_dm = { ... }` was a bare assignment under strict mode (no `var`/`let`/`const`), which throws "ReferenceError: assignment to undeclared variable _dm" on every page load. The boot catch at the end of the script couldn't save it because the throw happened during the synchronous IIFE evaluation, before the async catch was even registered. The fix is one line — `const _dm = { ... }` — but it makes the entire script load again, including the v3.0.18.3 memory protection system. The inner `_dm_active` typo from v3.0.18.2 was already fixed in v3.0.18.3; v3.0.18.4 closes the same class of bug one level out. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
+// @version      3.0.18.8
+// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.8: Audit fixes from a third, integrated pass. (1) Bookmark duplicate-id data loss: pressing B twice at the same video position silently overwrote the first bookmark because the id `videoId + "_" + position` collided. The id now includes `Date.now()`. (2) Hotkey re-capture lifecycle refactored: the v3.0.18.7 fix was applied in two of three places that ended a capture; now centralized in a single `_nClear()` helper. The test in test_hotkeys.js actually drives the buttons in jsdom and asserts the listener was removed, not just a source-grep check. (3) Resume overlay thumbnail CSS injection hardening: both overlay thumbnails now use `encodeURI()` for full URL escaping before interpolating into `url(...)`, with the old single-quote escape as a fallback. (4) Dashboard title DOM construction: the `[=] YT+ v<ver>` header now uses `createElement` + `textContent` for consistency with the v3.0.18.6 banner fix. Action registry integrity check added to test_hotkeys.js. All 7 test suites pass (213 checks). v3.0.18.7: Audit fixes from a second, deeper pass. (1) Hotkey re-capture leaked a keydown listener; now removed when a new capture starts. (2) Dashboard search null-dereference on stale data-feat; card hidden silently. v3.0.18.6: Audit fixes — import-from-menu now wires to the real import; SB mute path now counts and accumulates time; ccTextColor and idleDimBlur are sanitized before CSS interpolation; update banner rebuilt with textContent. All 7 test suites pass (203 checks). Known feature gap: `sbChapterRules` (chapter skip rules per channel) is collected but never applied — out of scope for this release. v3.0.18.5: SponsorBlock privacy-mode fix. Since v3.0.14 the SB post-fetch lookup searched the response for `p.hash === hash`, but the SponsorBlock server actually returns `{videoID, segments}` entries — the `hash` field never existed. Privacy mode (default ON) silently returned zero segments for every video because the lookup never matched, even though the server's response had the data. v3.0.18.3 / v3.0.18.4's _dm ReferenceError masked this bug because the whole script crashed before SB ever ran, so it only surfaced once v3.0.18.4 actually loaded. Fix: look up by `p.videoID === e` (the videoId passed into the fetcher). One-line change; no behavior difference for non-privacy mode (which is unaffected). v3.0.18.4: CRITICAL freeze fix. v3.0.18.3 had a ReferenceError in the data-minimization IIFE: the outer `_dm = { ... }` was a bare assignment under strict mode (no `var`/`let`/`const`), which throws "ReferenceError: assignment to undeclared variable _dm" on every page load. The boot catch at the end of the script couldn't save it because the throw happened during the synchronous IIFE evaluation, before the async catch was even registered. The fix is one line — `const _dm = { ... }` — but it makes the entire script load again, including the v3.0.18.3 memory protection system. The inner `_dm_active` typo from v3.0.18.2 was already fixed in v3.0.18.3; v3.0.18.4 closes the same class of bug one level out. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -2426,7 +2426,22 @@
                   i.className = "ytp-resume-thumb";
                   i.style.cssText =
                     "width:64px;height:36px;border-radius:6px;background:#1a1a1a center/cover no-repeat;flex-shrink:0";
-                  if (e.thumbnail) i.style.backgroundImage = "url('" + e.thumbnail.replace(/'/g, "%27") + "')";
+                  if (e.thumbnail) {
+                    // v3.0.18.8: full URL-escape the thumbnail before
+                    // interpolating into a CSS url(). The previous
+                    // version only escaped single quotes, so a
+                    // stray `)` or `\` in a YouTube CDN URL would
+                    // break the rule. Defense-in-depth; YouTube CDN
+                    // URLs are well-formed in practice.
+                    try {
+                      i.style.backgroundImage =
+                        "url('" +
+                        encodeURI(e.thumbnail).replace(/'/g, "%27") +
+                        "')";
+                    } catch (e) {
+                      i.style.backgroundImage = "url('" + e.thumbnail.replace(/'/g, "%27") + "')";
+                    }
+                  }
                   o.appendChild(i);
                   const d = document.createElement("div");
                   d.className = "ytp-resume-info";
@@ -2795,8 +2810,16 @@
     d.className = "ytp-resume-thumb";
     d.style.cssText =
       "width:120px;height:68px;border-radius:10px;flex-shrink:0;background:#000 center/cover no-repeat;box-shadow:0 4px 12px rgba(0,0,0,.5);position:relative;overflow:hidden";
-    if (e.thumbnail)
-      d.style.backgroundImage = "url('" + e.thumbnail.replace(/'/g, "%27") + "')";
+    if (e.thumbnail) {
+      // v3.0.18.8: full URL-escape (defense-in-depth). See the
+      // note on the small card thumbnail for the rationale.
+      try {
+        d.style.backgroundImage =
+          "url('" + encodeURI(e.thumbnail).replace(/'/g, "%27") + "')";
+      } catch (e2) {
+        d.style.backgroundImage = "url('" + e.thumbnail.replace(/'/g, "%27") + "')";
+      }
+    }
     const c = document.createElement("div");
     c.style.cssText =
       "position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.18)";
@@ -3062,8 +3085,14 @@
       t = ie.videoId();
     if (!e || !t) return void pe("No video here yet.", 1500, "error");
     const a = e.currentTime,
+      // v3.0.18.8: include Date.now() in the id so two bookmarks at
+      // the same second on the same video don't collide. The previous
+      // id (`videoId + "_" + Math.round(100*position)`) collided
+      // whenever a user pressed B twice at the same position — the
+      // second `k("bookmarks", n)` would PUT over the first instead
+      // of adding a new record, silently losing the bookmark.
       n = {
-        id: t + "_" + Math.round(100 * a),
+        id: t + "_" + Math.round(100 * a) + "_" + Date.now(),
         videoId: t,
         title: ie.title(),
         channel: ie.channel(),
@@ -11659,6 +11688,30 @@
       },
     }));
   let _n = null;
+  // v3.0.18.8: refactored the hotkey-capture lifecycle into a single
+  // `clear()` helper. The previous inline reset (in three different
+  // places — the click handler that interrupts capture, the handler
+  // that fires on a real key, and the handler that fires on Escape)
+  // had drifted apart over v3.0.18.x patches, and a v3.0.18.7 fix was
+  // added in two of the three. Centralizing the cleanup here makes
+  // the "leak the keydown listener" class of bug structurally
+  // impossible: any new path that ends a capture goes through this
+  // function.
+  function _nClear() {
+    if (!_n) return;
+    try {
+      _n.btn.classList.remove("listening");
+    } catch (e) {}
+    if (_n.btn && "press a key…" === _n.btn.textContent) {
+      try { _n.btn.textContent = _n.prevText; } catch (e) {}
+    }
+    if (_n.handler) {
+      try {
+        document.removeEventListener("keydown", _n.handler, !0);
+      } catch (e) {}
+    }
+    _n = null;
+  }
   function Hn(e) {
     e.replaceChildren();
     const t = To(
@@ -11685,17 +11738,13 @@
         (r.className = "ytp-hk-key" + (n ? "" : " empty")),
         (r.textContent = n ? $o(n) : "unbound"),
         r.addEventListener("click", () => {
-          // v3.0.18.7 fix: when starting a new capture, also remove
-          // the previous capture's keydown listener. Without this,
-          // if the user clicks button A (starts capture), then
-          // clicks button B without pressing a key, both the A
-          // and B keydown listeners stay attached. The next key
-          // press then fires BOTH handlers — both buttons get
-          // rebound to the same key.
-          _n &&
-            (_n.btn.classList.remove("listening"),
-            (_n.btn.textContent = _n.prevText),
-            document.removeEventListener("keydown", _n.handler, !0));
+          // v3.0.18.8: clear the previous capture (if any) BEFORE
+          // starting a new one. _nClear() handles the visual reset
+          // AND removes the document-level keydown listener. Without
+          // this, the previous capture's `a` closure stays attached
+          // and the next keypress would fire BOTH `a`s — both
+          // buttons would get rebound to the same key.
+          _nClear();
           const e = r.textContent;
           (r.classList.add("listening"), (r.textContent = "press a key…"));
           const a = (n) => {
@@ -11714,13 +11763,15 @@
               return;
             (n.preventDefault(), n.stopPropagation());
             const o = Jo(n);
-            if (
-              (document.removeEventListener("keydown", a, !0),
-              r.classList.remove("listening"),
-              (_n = null),
-              "Escape" === n.key)
-            )
-              return void (r.textContent = e);
+            // Single source of truth for ending the capture. The
+            // handler reference is stashed on `_n` so _nClear() can
+            // remove the listener even if the capture was never
+            // finalized.
+            _nClear();
+            if ("Escape" === n.key) {
+              r.textContent = e;
+              return;
+            }
             const i = Object.assign({}, S.hotkeyMap || {});
             ((i[t.id] = o),
               Ta("hotkeyMap", i),
@@ -11736,6 +11787,12 @@
                 break;
               }
           };
+          // Store the handler reference on `_n` so _nClear() can
+          // find and remove the listener. `addEventListener` is
+          // called with capture=true so the capture wins over
+          // any text input the user might be focused on (the
+          // dashboard text inputs are outside this scope, but
+          // other extensions might intercept).
           ((_n = { btn: r, prevText: e, handler: a }),
             document.addEventListener("keydown", a, !0));
         }),
@@ -22636,12 +22693,22 @@
         const t = To("div", "ytp-dhdr");
         t.classList.add("ytp-dhandle");
         const r = To("div", "ytp-dtitle");
-        a(
-          r,
-          '<span class="ytp-dgrip" aria-hidden="true">[=]</span> YT+ <span class="ytp-dver">v' +
-            n +
-            "</span>",
-        );
+        // v3.0.18.8: build the title with DOM (textContent /
+        // createElement) instead of innerHTML. The `n` version
+        // string is hardcoded by the script metadata, so this is
+        // defense-in-depth, not a real XSS risk. Goes through the
+        // a() helper anyway so the static markup is consistent.
+        const _grip = document.createElement("span");
+        _grip.className = "ytp-dgrip";
+        _grip.setAttribute("aria-hidden", "true");
+        _grip.textContent = "[=]";
+        const _name = document.createTextNode(" YT+ ");
+        const _ver = document.createElement("span");
+        _ver.className = "ytp-dver";
+        _ver.textContent = "v" + n;
+        r.appendChild(_grip);
+        r.appendChild(_name);
+        r.appendChild(_ver);
         const o = To("div", "ytp-dhbtns"),
           i = Oo(
             "⧉",

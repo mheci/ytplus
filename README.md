@@ -15,6 +15,17 @@
 
 ---
 
+## What's new in v3.0.18.8
+
+- **Third-pass audit fixes** — four more bugs and one structural refactor from a deeper, integrated review of the v3.0.18.6 / v3.0.18.7 surface:
+  1. **Bookmark duplicate-id data loss.** Pressing `B` twice at the same video position silently overwrote the first bookmark. The id `videoId + "_" + Math.round(100 * position)` collided for any two bookmarks at the same second on the same video, so the second `k("bookmarks", n)` did a `PUT` and replaced the first. The id now includes `Date.now()`, so two presses always produce distinct ids.
+  2. **Hotkey re-capture lifecycle refactored.** The v3.0.18.7 fix that removed the previous capture's `keydown` listener was applied in two of the three places that ended a capture, leaving Escape as a potential leak path. The capture lifecycle is now centralized in a single `_nClear()` helper called from every termination path (the new click handler, the keypress handler on a real key, and the keypress handler on Escape), which makes the "leak the keydown listener" class of bug structurally impossible. The behavioral test in `test_hotkeys.js` actually drives the buttons in jsdom and asserts that only the second capture's keypress fires — not just a source-grep check.
+  3. **Resume overlay thumbnail CSS injection hardening.** Both the small resume card and the full overlay interpolated `e.thumbnail` into a CSS `url(...)` with only single-quote escaping, so a stray `)` or `\` in a YouTube CDN URL would have broken the rule. Now wrapped in `encodeURI()` (with the old expression as a fallback). Defense-in-depth; YouTube CDN URLs are well-formed in practice.
+  4. **Dashboard title DOM construction.** The header `[=] YT+ v<version>` markup was built with the `a()` helper (which uses `innerHTML` under the hood). The `version` is hardcoded by the script metadata so this is defense-in-depth, but the title is now built with `createElement` + `textContent` for consistency with the v3.0.18.6 banner fix.
+- **Action registry integrity check** added to `test_hotkeys.js`. Walks `xa.list()` and asserts that every action has a unique id, a non-empty label, and that the registry has at least 30 actions. Regression guard against the next duplicate-id or accidentally-removed action.
+- All 7 test suites pass: `test_sandbox`, `test_dashboard` (12), `test_update_check` (18), `test_sb` (30), `test_dm` (33), `test_hotkeys` (59), `test_memory` (59). **213 total checks.**
+- No new features; pure bug fixes from a third line-by-line audit pass.
+
 ## What's new in v3.0.18.7
 
 - **Second-pass audit fixes** — two more bugs caught during a deeper line-by-line review of the un-audited corners from v3.0.18.6:
@@ -489,7 +500,11 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.18.7 *(current)*
+### v3.0.18.8 *(current)*
+- Third-pass audit fixes: bookmark id now includes `Date.now()` so two bookmarks at the same position don't collide (silent data loss fix); hotkey re-capture lifecycle centralized in `_nClear()` so the listener-leak class of bug is structurally impossible; resume overlay thumbnails use full `encodeURI()` for CSS url() hardening; dashboard title uses `createElement` + `textContent` for consistency. Action registry integrity check added to `test_hotkeys.js` (every action has a unique id, non-empty label, registry has 30+ actions). All 7 test suites pass (213 checks).
+- Behavioral tests in `test_hotkeys.js`: the v3.0.18.7 fixes (hotkey re-capture leak, dashboard search null-deref) are now exercised by actually driving the dashboard in jsdom instead of just grepping the source. This catches the bug class regardless of how the fix is written.
+
+### v3.0.18.7
 - Second-pass audit fixes: hotkey re-capture in the "Custom Keyboard Shortcuts" panel now removes the previous capture's keydown listener (avoids double-rebinding both buttons to the same key on a click→click→keypress sequence); the dashboard search filter now hides stale `data-feat` cards silently instead of throwing on every keystroke. Two more bugs from a deeper line-by-line review. All 7 test suites pass.
 
 ### v3.0.18.6

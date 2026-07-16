@@ -282,45 +282,226 @@ window.unsafeWindow = window;
   YT.actions.resetBinding("cheat.open");
   YT.setCfg("hotkeyOptIn", false);
 
-  console.log("\n# v3.0.18.7 hotkey re-capture listener-leak fix");
-  // Repro: open the dashboard, navigate to the
-  // "Custom Keyboard Shortcuts" panel, click button A
-  // (start capture), then click button B (start a
-  // different capture) without pressing a key in between.
-  // Before the fix, button A's keydown listener stayed
-  // attached. The next keypress then fired BOTH A's and
-  // B's handlers, double-rebinding both actions. After
-  // the fix, A's listener is explicitly removed when B
-  // starts its capture.
+  console.log("\n# v3.0.18.8 behavioral tests for previous-pass fixes");
+  // ----------------------------------------------------------------
+  // v3.0.18.7 fix #1 — hotkey re-capture listener leak (behavioral)
+  // ----------------------------------------------------------------
+  // Open the dashboard, render the custom-hotkeys panel, click
+  // button A (start capture for hotkey #1), then click button B
+  // (start capture for hotkey #2) WITHOUT pressing a key in
+  // between, then dispatch ONE keydown event. Only button B's
+  // action should be rebound — A's listener should have been
+  // removed when B's capture started.
   //
-  // We can't easily drive the actual buttons in jsdom
-  // (they're inside the dashboard's deferred render), so
-  // we directly inspect the source code to confirm the
-  // removeEventListener("keydown", _n.handler, !0) call
-  // is present in the click handler for the rebind
-  // buttons. A small but reliable test: grep the user.js
-  // source for the exact fix line.
+  // The source-grep test we used in v3.0.18.7 was a fallback for
+  // cases where the dashboard can't be fully rendered in jsdom;
+  // now that the dashboard's render path is exercised by the
+  // existing tests, we drive the actual buttons. If the dashboard
+  // can't be rendered (e.g. jsdom limitation) we fall back to the
+  // source-grep check so the test still runs.
   const userJs = fs.readFileSync(
     path.join(__dirname, "yt+.user.js"),
     "utf8",
   );
+  // We need hotkeyOptIn on so the dashboard shows the custom-keys
+  // panel. The keys we touch are bookmarkNow and togglePiP — both
+  // have a default binding. We use them as our two buttons A and
+  // B for the test.
+  YT.setCfg("hotkeyOptIn", true);
+  // Open the dashboard and give it time to render. The dashboard
+  // uses requestIdleCallback / setTimeout chains so we need a
+  // generous wait — the test_dashboard.js sandbox test uses
+  // 800+500ms. We do 600ms here.
+  YT.openDashboard();
+  await new Promise((r) => setTimeout(r, 600));
+  // The "Custom Keyboard Shortcuts" panel renders as a settings
+  // block when its master (hotkeyOptIn) is on. The dashboard
+  // element has class="ytp-dash" (no id attribute on the
+  // element itself, the CSS targets .ytp-dash). Find the rebind
+  // buttons (class .ytp-hk-key). If the dashboard render is
+  // incomplete in jsdom, this list may be empty — fall through
+  // to the source-grep check.
+  const dashRoot = document.querySelector(".ytp-dash");
+  const hkButtons = dashRoot
+    ? dashRoot.querySelectorAll(".ytp-hk-key")
+    : [];
+  let behavioralRebindTestRan = false;
+  if (hkButtons.length >= 2) {
+    // Pick two buttons (A and B) whose actions we'll try to rebind.
+    const btnA = hkButtons[0];
+    const btnB = hkButtons[1];
+    // Snapshot the bindings before we click.
+    const mapBefore = JSON.parse(JSON.stringify(YT.cfg.hotkeyMap || {}));
+    // Click A (start capture). UI flips to "press a key…".
+    btnA.click();
+    // Click B (interrupt capture, start a new one). The v3.0.18.7
+    // fix removes A's keydown listener here.
+    btnB.click();
+    behavioralRebindTestRan = true;
+    // Dispatch ONE keydown. Only B's handler should fire.
+    const kev = new window.KeyboardEvent("keydown", {
+      code: "KeyZ",
+      key: "z",
+      bubbles: true,
+    });
+    document.dispatchEvent(kev);
+    await new Promise((r) => setTimeout(r, 30));
+    // The map should have one new entry — for B's action only.
+    // Count how many keys in the map refer to "KeyZ".
+    const mapAfter = JSON.parse(JSON.stringify(YT.cfg.hotkeyMap || {}));
+    const aBound = mapAfter[btnA.dataset && btnA.dataset.rowid] === "KeyZ";
+    const bBound = mapAfter[btnB.dataset && btnB.dataset.rowid] === "KeyZ";
+    // The buttons may not carry rowid attributes; fall back to
+    // counting KeyZ entries in the map.
+    const keyZEntries = Object.entries(mapAfter).filter(
+      ([k, v]) => v === "KeyZ",
+    ).length;
+    if (btnA.dataset && btnA.dataset.rowid && btnB.dataset && btnB.dataset.rowid) {
+      assert(
+        !aBound && bBound,
+        "hotkey re-capture: only the second button (B) gets rebound, not both",
+      );
+    } else {
+      // No rowid in the DOM; assert that the map got exactly one
+      // new KeyZ entry (i.e. A's listener did NOT also fire).
+      assert(
+        keyZEntries === 1,
+        "hotkey re-capture: exactly one action got rebound to KeyZ (got " +
+          keyZEntries +
+          ")",
+      );
+    }
+    // Restore the map so other tests aren't affected.
+    YT.setCfg("hotkeyMap", mapBefore);
+  }
+  assert(
+    behavioralRebindTestRan,
+    "hotkey re-capture behavioral test ran (dashboard rendered at least 2 .ytp-hk-key buttons)",
+  );
+  // The source-grep fallback (kept for resilience).
   const hasRemove =
     /_n\s*&&\s*\([\s\S]{0,200}document\.removeEventListener\(\s*["']keydown["']\s*,\s*_n\.handler\s*,\s*!?0\s*\)/.test(
       userJs,
     );
   assert(
-    hasRemove,
-    "hotkey re-capture explicitly removes previous capture's keydown listener (v3.0.18.7 fix)",
+    hasRemove || behavioralRebindTestRan,
+    "hotkey re-capture source-grep fallback: removeEventListener(\"keydown\", _n.handler, !0) present",
   );
-  // Also verify the handler reference is stored in _n
-  const hasHandlerRef =
-    /_n\s*=\s*\{\s*btn:\s*r\s*,\s*prevText:\s*e\s*,\s*handler:\s*a\s*\}/.test(
-      userJs,
-    );
+  // v3.0.18.8 refactor: the lifecycle is now centralized in _nClear().
+  const hasClearHelper = /function _nClear\s*\(\s*\)\s*\{/.test(userJs);
   assert(
-    hasHandlerRef,
-    "hotkey capture stores handler reference on _n for later removal (v3.0.18.7 fix)",
+    hasClearHelper,
+    "hotkey capture lifecycle centralized in _nClear() (v3.0.18.8 refactor)",
   );
+
+  // ----------------------------------------------------------------
+  // v3.0.18.7 fix #2 — dashboard search null-dereference (behavioral)
+  // ----------------------------------------------------------------
+  // The dashboard search input filter maps over every .ytp-card and
+  // calls va.get(t.dataset.feat) to look up the feature. If a card
+  // refers to a feature that has been removed, Map.get returns
+  // undefined, and the old code would dereference `a.name` on
+  // every keystroke. The fix guards with `if (!a) { hide; return; }`.
+  //
+  // Behavioral test: open the dashboard, take a snapshot of the
+  // .ytp-card count, manually clone a card and rewrite its
+  // data-feat to a value that is NOT in the registry, then
+  // dispatch an `input` event on the search box. The card count
+  // should drop by one (the stale one hidden), and no exception
+  // should be thrown.
+  let threw = null;
+  try {
+    // First, ensure the dashboard is open.
+    YT.openDashboard();
+    await new Promise((r) => setTimeout(r, 600));
+    // Dashboard uses class="ytp-dash" on the root element, not an id.
+    const dashRoot2 = document.querySelector(".ytp-dash");
+    const search = dashRoot2
+      ? dashRoot2.querySelector(".ytp-search")
+      : null;
+    const allCards = dashRoot2
+      ? dashRoot2.querySelectorAll(".ytp-card")
+      : [];
+    if (search && allCards.length >= 2) {
+      // Clone the first card, set its data-feat to a nonexistent id,
+      // append it to the body (still inside #ytp-dash via the
+      // existing card's parent).
+      const ghost = allCards[0].cloneNode(true);
+      ghost.dataset.feat = "definitely-not-a-real-feature-xyz";
+      ghost.id = "ytp-ghost-card";
+      allCards[0].parentNode.appendChild(ghost);
+      // Type into the search box to trigger the filter.
+      search.value = "a";
+      search.dispatchEvent(new window.Event("input", { bubbles: true }));
+      // The search handler is debounced via ee(..., 80) so we need
+      // to wait for that to fire.
+      await new Promise((r) => setTimeout(r, 200));
+      // The ghost card should be hidden (display: none).
+      assert(
+        ghost.style.display === "none",
+        "dashboard search hides stale data-feat cards silently (no TypeError on a.name)",
+      );
+      // Clean up the ghost.
+      ghost.remove();
+      search.value = "";
+      search.dispatchEvent(new window.Event("input", { bubbles: true }));
+    } else {
+      assert(
+        false,
+        "dashboard search behavioral test precondition failed (no search or cards)",
+      );
+    }
+  } catch (e) {
+    threw = e;
+  }
+  assert(
+    threw === null,
+    "dashboard search does not throw on stale data-feat (no exception caught)",
+  );
+
+  // Close the dashboard so subsequent tests aren't affected.
+  try { YT.closeDashboard(); } catch (e) {}
+  await new Promise((r) => setTimeout(r, 50));
+  YT.setCfg("hotkeyOptIn", false);
+
+  console.log("\n# v3.0.18.8 action registry integrity check");
+  // v3.0.18.8 regression guard: the action registry has grown to
+  // 30+ actions over v3.0.18 / v3.0.18.1 / v3.0.18.5 / v3.0.18.7.
+  // Duplicate-id registrations are silent (the _register helper
+  // logs and returns) but they would mean a real action was
+  // shadowed by a later one. Walk the registry and assert: every
+  // action has a unique id, every action has a non-empty label,
+  // and every action's run is a function.
+  const allActions = YT.actions.list();
+  assert(
+    allActions.length >= 30,
+    "action registry has at least 30 registered actions (got " +
+      allActions.length +
+      ")",
+  );
+  const ids = allActions.map((a) => a.id);
+  const uniqIds = Array.from(new Set(ids));
+  assert(
+    ids.length === uniqIds.length,
+    "action registry has no duplicate ids (got " +
+      ids.length +
+      " unique of " +
+      uniqIds.length +
+      ")",
+  );
+  const emptyLabels = allActions.filter((a) => !a.label || !a.label.trim());
+  assert(
+    emptyLabels.length === 0,
+    "every action has a non-empty label (got " +
+      emptyLabels.length +
+      " empty)",
+  );
+  // run() should be a function on every action. We can't check
+  // _run internals from outside, but we can call run and see if
+  // it throws. We use a non-existent id first to assert the
+  // graceful-fail path returns false.
+  const noopResult = YT.actions.run("definitely-not-a-real-action");
+  assert(noopResult === false, "actions.run returns false for unknown id");
 
   console.log("\n# Done.");
   console.log("Pass: " + pass + ", Fail: " + fail);

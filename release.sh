@@ -48,10 +48,28 @@ echo "=== Updated headers ==="
 grep -E '@version|@updateURL|@downloadURL' yt+.user.js yt+.meta.js
 echo ""
 
-# 2) Syntax check
+# 2) Syntax check + tests
 echo "=== Syntax check ==="
 node --check yt+.user.js || { echo "Syntax check failed!"; exit 1; }
 echo "OK"
+
+# Run all test files. Each one is a JSDOM smoke test; the exit code
+# is 0 on success. We list them explicitly so adding a new one to the
+# repo is opt-in (you have to remember to add it to the list).
+echo "=== Tests ==="
+for t in test_sandbox.js test_dashboard.js test_update_check.js test_sb.js; do
+  if [ -f "$t" ]; then
+    printf "  %-25s " "$t"
+    if node "$t" >/tmp/_ytp_test.out 2>&1; then
+      echo "OK"
+    else
+      echo "FAIL"
+      cat /tmp/_ytp_test.out
+      exit 1
+    fi
+  fi
+done
+rm -f /tmp/_ytp_test.out
 
 # 3) Commit and push
 git add yt+.user.js yt+.meta.js

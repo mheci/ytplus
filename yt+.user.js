@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.13
-// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments.
+// @version      3.0.14
+// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -21,6 +21,10 @@
 // @grant        GM_info
 // @grant        unsafeWindow
 // @connect      sponsor.ajay.app
+// @connect      sponsor.lunatic.no
+// @connect      sb.minastyr.com
+// @connect      sponsorblock.mchang.xyz
+// @connect      sponsor.tatudoes.tech
 // @connect      www.youtube.com
 // @connect      self
 // @connect      googlevideo.com
@@ -154,6 +158,13 @@
         return !1;
       }
     })(),
+    // Full SponsorBlock category list. Order here drives the order in the
+    // dashboard per-category card list, the default config keys, and the
+    // /api/skipSegments `category` filter. actionType 'chapter' is used by
+    // SB to mean "auto-generated YouTube chapter" and is rendered as a
+    // small tick mark on the seekbar (no skip). 'hook' is a short
+    // attention-grabbing clip; in SB it shares the "filler" category, but
+    // the wiki documents a separate hook, so we expose it too.
     i = [
       { id: "sponsor", label: "Sponsor", color: "#00d400" },
       { id: "selfpromo", label: "Self-Promo", color: "#ffff00" },
@@ -165,6 +176,35 @@
       { id: "poi_highlight", label: "Highlight", color: "#ff1684" },
       { id: "filler", label: "Filler", color: "#7300ab" },
       { id: "exclusive_access", label: "Exclusive", color: "#008a5c" },
+      { id: "chapter", label: "Chapter", color: "#ffffff" },
+      { id: "hook", label: "Hook", color: "#ff6f00" },
+    ],
+    // actionTypes understood by SponsorBlock. `skip` advances playback,
+    // `mute` lowers volume without skipping, `full` is the same as skip
+    // for SB's purposes (caller treats as skip), `poi` is a point-of-
+    // interest marker shown on the seekbar with no skip behavior, and
+    // `chapter` is an auto-generated YouTube chapter that shows as a
+    // tick mark on the seekbar. Anything else falls through to skip.
+    Yi = {
+      skip: "Skip",
+      mute: "Mute",
+      full: "Skip",
+      poi: "Highlight",
+      chapter: "Chapter",
+      disabled: "Off",
+    },
+    // Public SponsorBlock-compatible API instances the user can pick
+    // from. Source: https://wiki.sponsor.ajay.app/w/Instances (the wiki
+    // lists a wider set but these are the most-used ones). The "ajay"
+    // entry is the canonical server run by the SB team. Custom falls
+    // through to S.sbServer.
+    Zi = [
+      { id: "ajay", name: "SponsorBlock (official)", url: "https://sponsor.ajay.app" },
+      { id: "lunar", name: "Lunar's instance", url: "https://sponsor.lunatic.no" },
+      { id: "minastyr", name: "minastyr's instance", url: "https://sb.minastyr.com" },
+      { id: "matt", name: "Matt's instance", url: "https://sponsorblock.mchang.xyz" },
+      { id: "tatu", name: "Tatu's instance", url: "https://sponsor.tatudoes.tech" },
+      { id: "custom", name: "Custom URL…", url: "" },
     ],
     d = {
       hd2160: "4K",
@@ -181,8 +221,15 @@
       const e = {};
       return (
         i.forEach((t) => {
-          ((e["sb_" + t.id + "_en"] = "sponsor" === t.id),
-            (e["sb_" + t.id + "_act"] = "skip"));
+          // Default behavior: sponsor is the only one that auto-skips
+          // out of the box. POI and chapter highlight by default
+          // (shown on the seekbar but no skip). Everything else is
+          // off so users opt in.
+          const defEn = "sponsor" === t.id;
+          const defAct =
+            t.id === "poi_highlight" || t.id === "chapter" ? "poi" : "skip";
+          e["sb_" + t.id + "_en"] = defEn;
+          e["sb_" + t.id + "_act"] = defAct;
         }),
         e
       );
@@ -243,6 +290,44 @@
         sbMinVotes: 0,
         sbHud: !0,
         sbSeekbar: !0,
+        // Extra filters exposed by /api/skipSegments. minViews / maxViews
+        // are inclusive. sbIncludeLocked etc. default to false because
+        // locked segments are usually submitted and then locked by
+        // moderators — you generally don't want to skip them in a way
+        // that would let people accidentally rely on a misclassification.
+        sbMinViews: 0,
+        sbMaxViews: 0, // 0 = no upper bound
+        sbIncludeLocked: !1,
+        sbIncludeHidden: !1,
+        sbIncludeIgnored: !1,
+        // When trimUUIDs=1, the server omits the full UUID list from the
+        // response payload. We don't use UUIDs for skip logic, only for
+        // the optional vote/edit/ignore endpoints, so this trades a tiny
+        // bit of bandwidth for a measurable reduction in response size
+        // for long videos.
+        sbTrimUUIDs: !0,
+        // Overrides — per-segment (UUID -> action) and per-channel
+        // (channelId -> action). Stored as JSON strings in GM storage to
+        // avoid config-migration churn; parsed on use.
+        sbSegOverrides: "",
+        sbChanOverrides: "",
+        // Per-channel skip rules for `chapter` category titles. Format
+        // is "channelId:regex,channelId:regex". A chapter whose title
+        // matches the channel's regex is auto-skipped.
+        sbChapterRules: "",
+        // "Up next" floating preview threshold (seconds) — show a
+        // "Sponsor in 12s" badge when the next segment starts within
+        // this many seconds of the current time. 0 disables.
+        sbUpNextSec: 12,
+        // Color override per category (hex strings), empty = use the
+        // built-in color. Stored as JSON "id:hex,id:hex".
+        sbColorOverrides: "",
+        // Public instance picker: the user can pick from a known
+        // public SB instance, or fall through to the custom sbServer
+        // string above.
+        sbServerPreset: "ajay",
+        // HUD extended info: show server status, last fetch time, etc.
+        sbHudStatus: !1,
         sessionRestoreOn: !1,
         sessionResumeMode: "card",
         sessionResumeDesign: "default",
@@ -1243,7 +1328,14 @@
   }
   async function he(e, t) {
     if (((t = t || {}), S.safeMode)) throw new Error("SAFE_MODE_BLOCKED");
-    const a = new Set(["sponsor.ajay.app", "www.youtube.com"]);
+    const a = new Set([
+      "sponsor.ajay.app",
+      "sponsor.lunatic.no",
+      "sb.minastyr.com",
+      "sponsorblock.mchang.xyz",
+      "sponsor.tatudoes.tech",
+      "www.youtube.com",
+    ]);
     try {
       (S.sbServer && a.add(new URL(S.sbServer).host),
         S.remoteSelectorsURL && a.add(new URL(S.remoteSelectorsURL).host));
@@ -2386,6 +2478,15 @@
       pe("Bookmark @ " + ce(a), 1800, "success"),
       g.emit("bookmarks.changed"));
   }
+  // ---------------------------------------------------------------------
+  // SponsorBlock core
+  // ---------------------------------------------------------------------
+  // Module state. All variables are scoped to the closure; nothing leaks
+  // beyond `at`, `tt`, `yt`, `wt`, etc. into global window. The same set
+  // of names is kept (tt, at, nt, rt, ot, it, dt, ct, st, lt, pt, ut,
+  // ht, mt) as the legacy implementation so external references in the
+  // YT+ API surface (ytPlus.sb.stats etc.) and the per-feature apply
+  // functions keep working without rename churn.
   let tt = [],
     at = null,
     nt = 0,
@@ -2400,42 +2501,273 @@
     ut = null,
     ht = null,
     mt = 0;
+  // Per-category counters for the diagnostics view. Reset on each new
+  // video load.
+  let St_perCat = {};
+  // Per-category time-saved counters. Same.
+  let St_perCatSaved = {};
+  // Last successful fetch timestamp + error info. Used by the HUD
+  // status line and `ytPlus.sb.stats()`.
+  let St_lastFetch = 0,
+    St_lastErr = null,
+    St_fetchInFlight = 0,
+    St_segmentsRaw = 0;
+  // Backoff state. Increments on 429/5xx, halves on each successful
+  // fetch. The cache TTL is `baseTtl * 2^backoffLevel` and the in-flight
+  // refcount plus this controls the actual hit/miss behavior of St().
+  let St_backoff = 0,
+    St_cacheTTLms = 60 * 60 * 1000; // 1h base, doubled on each 429/5xx
+  // Cached LRU map for parsed segments keyed by the (categories,
+  // filters, vid) tuple. Capped at 64 entries to keep memory bounded.
   const yt = (function () {
-      const e = new Map();
-      return {
-        get(t) {
-          if (!e.has(t)) return;
-          const a = e.get(t);
-          return (e.delete(t), e.set(t, a), a);
-        },
-        set(t, a) {
-          if ((e.has(t) && e.delete(t), e.set(t, a), e.size > 32)) {
-            const t = e.keys().next().value;
-            e.delete(t);
-          }
-        },
-        delete(t) {
+    const e = new Map();
+    return {
+      get(t) {
+        if (!e.has(t)) return;
+        const a = e.get(t);
+        return (e.delete(t), e.set(t, a), a);
+      },
+      set(t, a) {
+        if ((e.has(t) && e.delete(t), e.set(t, a), e.size > 64)) {
+          const t = e.keys().next().value;
           e.delete(t);
-        },
-        clear() {
-          e.clear();
-        },
-        get size() {
-          return e.size;
-        },
-      };
-    })(),
-    gt = re();
-  function ft() {
-    S.sponsorblockOn && S.sbHud
-      ? (!lt &&
-          document.body &&
-          ((lt = document.createElement("div")),
-          (lt.id = "ytp-sb-hud"),
-          document.body.appendChild(lt)),
-        lt && (lt.textContent = "SB " + ce(rt) + " - " + ot + " skips"))
-      : lt && (lt.remove(), (lt = null));
+        }
+      },
+      delete(t) {
+        e.delete(t);
+      },
+      clear() {
+        e.clear();
+      },
+      get size() {
+        return e.size;
+      },
+    };
+  })();
+  // Deduplicating in-flight promise factory, keyed by the cache key. If
+  // two callers ask for the same vid+config combo, they share a single
+  // HTTP roundtrip.
+  const gt = re();
+  // SHA-256 → first 4 hex chars (privacy-mode hash).
+  async function Bt_videoHash(e) {
+    const t = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(e),
+    );
+    return Array.from(new Uint8Array(t))
+      .map((e) => e.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 4);
   }
+  // Pick the SB server URL from the preset. Returns "https://sponsor.ajay.app"
+  // by default. Custom falls through to S.sbServer.
+  function Bt_serverUrl() {
+    const preset = S.sbServerPreset || "ajay";
+    const hit = Zi.find((e) => e.id === preset);
+    if (hit && hit.url) return hit.url.replace(/\/$/, "");
+    return (S.sbServer || r).replace(/\/$/, "");
+  }
+  // Build the /api/skipSegments URL honoring all the new filters
+  // (minViews, maxViews, locked/hidden/ignored, actionTypes, trimUUIDs,
+  // requiredSegments, plus the existing minVotes). We split the
+  // category list into the path component when in privacy mode and
+  // into `category=` query params otherwise.
+  function Bt_buildUrl(e, hash) {
+    const n = Bt_serverUrl();
+    const enabledCats = i
+      .filter((c) => S["sb_" + c.id + "_en"])
+      .map((c) => c.id);
+    if (!enabledCats.length) return null;
+    const params = [];
+    enabledCats.forEach((c) => params.push("category=" + encodeURIComponent(c)));
+    if (S.sbMinVotes) params.push("minVotes=" + encodeURIComponent(S.sbMinVotes));
+    if (S.sbMinViews) params.push("minViews=" + encodeURIComponent(S.sbMinViews));
+    if (S.sbMaxViews) params.push("maxViews=" + encodeURIComponent(S.sbMaxViews));
+    if (S.sbIncludeLocked) params.push("locked=1");
+    if (S.sbIncludeHidden) params.push("hidden=1");
+    if (S.sbIncludeIgnored) params.push("ignored=1");
+    if (S.sbTrimUUIDs) params.push("trimUUIDs=1");
+    params.push("service=YouTube");
+    if (S.sbPrivacy) {
+      return n + "/api/skipSegments/" + hash + "?" + params.join("&");
+    }
+    return (
+      n + "/api/skipSegments?videoID=" + encodeURIComponent(e) + "&" + params.join("&")
+    );
+  }
+  // Filter segments after fetch. We strip malformed entries, apply the
+  // maxViews / minViews filters (the server also filters but if
+  // sbIncludeLocked is on we need to keep those), and resolve the
+  // per-segment action type override. The per-segment override map is
+  // stored in S.sbSegOverrides as a JSON string keyed by UUID.
+  function Bt_filterSegments(segments) {
+    if (!Array.isArray(segments)) return [];
+    const minV = Number(S.sbMinVotes) || 0;
+    const minVi = Number(S.sbMinViews) || 0;
+    const maxVi = Number(S.sbMaxViews) || 0;
+    const includeLocked = !!S.sbIncludeLocked;
+    const includeHidden = !!S.sbIncludeHidden;
+    const includeIgnored = !!S.sbIncludeIgnored;
+    const out = [];
+    for (const s of segments) {
+      if (!s || !Array.isArray(s.segment) || s.segment.length !== 2) continue;
+      if (!isFinite(s.segment[0]) || !isFinite(s.segment[1])) continue;
+      if (s.segment[1] <= s.segment[0]) continue;
+      if ((s.votes || 0) < minV) continue;
+      if (minVi && (s.views || 0) < minVi) continue;
+      if (maxVi && (s.views || 0) > maxVi) continue;
+      if (!includeLocked && s.locked) continue;
+      if (!includeHidden && s.hidden) continue;
+      // `shadowHidden` segments are not returned by the SB server unless
+      // requested, so there's no client filter for them. `ignored` is
+      // similar (shadowIgnored).
+      if (!includeIgnored && (s.shadowIgnored || s.ignored)) continue;
+      // Per-channel override is applied at lookup time in xt() because
+      // we don't know the channelId here, just the segment. The
+      // per-segment (UUID) override is applied here, lazily.
+      out.push(s);
+    }
+    return out;
+  }
+  // Decide the effective action for a segment. Resolves in priority
+  // order: per-UUID override > per-channel override > per-category
+  // setting (the user-facing `sb_<id>_act` toggle) > segment.actionType.
+  // The per-channel override map is JSON in S.sbChanOverrides keyed by
+  // channelId, value is "skip"|"mute"|"disabled" or a { uuid: act } map
+  // for the categories dictionary.
+  function Bt_resolveAction(seg, channelId) {
+    const segOverride = (St_segOverrides || {})[seg.UUID];
+    if (segOverride) return segOverride;
+    const chanOverride = channelId && (St_chanOverrides || {})[channelId];
+    if (chanOverride) return chanOverride;
+    const userCfg = S["sb_" + seg.category + "_act"];
+    if (userCfg && userCfg !== "skip") return userCfg;
+    // API's own actionType is honored as a fallback so that, e.g.,
+    // segments the SB backend marked as "mute" will mute by default.
+    if (seg.actionType && seg.actionType !== "skip") return seg.actionType;
+    return "skip";
+  }
+  // Cached parsed override maps. Recomputed when the underlying config
+  // strings change. Initialized on first use.
+  let St_segOverrides = null,
+    St_chanOverrides = null,
+    St_segOvRaw = "",
+    St_chanOvRaw = "",
+    St_colorOverrides = null,
+    St_colorOvRaw = "",
+    St_chapterRules = null,
+    St_chapterRulesRaw = "";
+  function Bt_loadOverrides() {
+    const sRaw = S.sbSegOverrides || "";
+    const cRaw = S.sbChanOverrides || "";
+    if (sRaw !== St_segOvRaw) {
+      try {
+        St_segOverrides = sRaw ? JSON.parse(sRaw) : {};
+      } catch (e) {
+        St_segOverrides = {};
+      }
+      St_segOvRaw = sRaw;
+    }
+    if (cRaw !== St_chanOvRaw) {
+      try {
+        St_chanOverrides = cRaw ? JSON.parse(cRaw) : {};
+      } catch (e) {
+        St_chanOverrides = {};
+      }
+      St_chanOvRaw = cRaw;
+    }
+    const colRaw = S.sbColorOverrides || "";
+    if (colRaw !== St_colorOvRaw) {
+      try {
+        St_colorOverrides = colRaw ? JSON.parse(colRaw) : {};
+      } catch (e) {
+        St_colorOverrides = {};
+      }
+      St_colorOvRaw = colRaw;
+    }
+    const chRaw = S.sbChapterRules || "";
+    if (chRaw !== St_chapterRulesRaw) {
+      try {
+        St_chapterRules = chRaw ? JSON.parse(chRaw) : {};
+      } catch (e) {
+        St_chapterRules = {};
+      }
+      St_chapterRulesRaw = chRaw;
+    }
+  }
+  // Effective color for a category id, with user override on top of
+  // the built-in defaults.
+  function Bt_color(catId) {
+    Bt_loadOverrides();
+    const ov = St_colorOverrides && St_colorOverrides[catId];
+    if (ov && /^#[0-9a-fA-F]{3,6}$/.test(ov)) return ov;
+    const def = i.find((c) => c.id === catId);
+    return def ? def.color : "#fff";
+  }
+  // Current SB server health. Returns the most recent fetch status
+  // object for the HUD and `ytPlus.sb.stats()`.
+  function Bt_health() {
+    return {
+      lastFetch: St_lastFetch,
+      lastErr: St_lastErr,
+      backoff: St_backoff,
+      segments: St_segmentsRaw,
+      perCategory: Object.assign({}, St_perCat),
+      perCategorySaved: Object.assign({}, St_perCatSaved),
+      cacheSize: yt.size,
+    };
+  }
+  // HUD renderer. Two modes: minimal ("SB 0:00 - 0 skips") and
+  // extended (multi-line with server status + per-category top hits).
+  function ft() {
+    if (!S.sponsorblockOn) {
+      lt && (lt.remove(), (lt = null));
+      return;
+    }
+    if (!S.sbHud) {
+      lt && (lt.remove(), (lt = null));
+      return;
+    }
+    if (!lt && document.body) {
+      lt = document.createElement("div");
+      lt.id = "ytp-sb-hud";
+      document.body.appendChild(lt);
+    }
+    if (!lt) return;
+    if (S.sbHudStatus) {
+      const health = Bt_health();
+      const top = Object.entries(health.perCategory)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([k, v]) => k + " " + v)
+        .join("  ");
+      const topSaved = Object.entries(health.perCategorySaved)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([k, v]) => k + " " + ce(v))
+        .join("  ");
+      const ago =
+        health.lastFetch > 0
+          ? Math.max(0, Math.floor((Date.now() - health.lastFetch) / 1000)) + "s ago"
+          : "never";
+      const errBit = health.lastErr ? "  err " + health.lastErr : "";
+      lt.textContent =
+        "SB " +
+        ce(rt) +
+        " · " +
+        ot +
+        " skips\nserver: " +
+        ago +
+        errBit +
+        "\n" +
+        (top ? "top: " + top + "  saved: " + ce(0) + "\n" : "") +
+        (topSaved ? "saved: " + topSaved : "");
+    } else {
+      lt.textContent = "SB " + ce(rt) + " - " + ot + " skips";
+    }
+  }
+  // Mute-overlay text shown above the player while inside a "mute"
+  // segment. Updated each tick.
   function bt(e, t) {
     document.body &&
       (ht ||
@@ -2447,183 +2779,645 @@
   function vt() {
     ht && (ht.remove(), (ht = null));
   }
+  // Restore the video element to its un-muted state.
   function kt() {
     if (!dt) return;
     const e = ie.el();
-    (e && ((e.volume = null != ct ? ct : 1), (e.muted = st)),
-      (dt = !1),
-      (ct = null),
-      (st = !1));
+    e && ((e.volume = null != ct ? ct : 1), (e.muted = st));
+    dt = !1;
+    ct = null;
+    st = !1;
   }
-  function xt() {
-    const e = ie.el();
-    if (!e || e.paused || e.ended) return void kt();
-    if (!tt.length) return;
-    const t = e.currentTime;
-    let a = !1;
-    for (const n of tt) {
-      const r = n.category,
-        o = S["sb_" + r + "_act"] || "skip";
-      if (!S["sb_" + r + "_en"] || "disabled" === o) continue;
-      if ("poi" === n.actionType) continue;
-      const d = n.segment[0],
-        c = n.segment[1],
-        s = t >= d && t < c;
-      if ("mute" !== o && "mute" !== n.actionType) {
-        if (s && !it.has(n.UUID)) {
-          it.add(n.UUID);
-          const a = Math.max(0, c - t);
-          if (
-            ((rt += a),
-            ot++,
-            k("kv", { k: "__sb_saved__", v: rt }),
-            k("kv", { k: "__sb_skips__", v: ot }),
-            ft(),
-            (e.currentTime = c),
-            S.sbToast)
-          ) {
-            const e = i.find((e) => e.id === r);
-            pe(
-              "Skipped " + (e ? e.label : r) + " (" + ce(a) + ")",
-              S.sbToastDur || 2200,
-              "success",
-            );
-          }
-        }
-      } else if (s) {
-        a = !0;
-        const n = i.find((e) => e.id === r);
-        (dt || ((ct = e.volume), (st = e.muted), (e.muted = !0), (dt = !0)),
-          bt((n ? n.label : r) + " muted", c - t));
+  // Binary-search the next segment whose start is > currentTime. Returns
+  // the index in tt, or -1. Used by both the per-tick skip logic and
+  // the "up next" preview. Segments are kept sorted by start time.
+  function Bt_findActive(t) {
+    if (!tt.length) return -1;
+    let lo = 0,
+      hi = tt.length - 1,
+      best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const s = tt[mid];
+      if (s.segment[0] <= t) {
+        if (t < s.segment[1]) return mid;
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
       }
     }
-    !a && dt && (kt(), vt());
+    return -1;
   }
-  function wt() {
-    if (
-      (document.querySelectorAll(".ytp-sb-mark").forEach((e) => e.remove()),
-      !S.sponsorblockOn || !S.sbSeekbar || !tt.length)
-    )
+  // Find the next segment that starts after `t`. Returns the index or
+  // -1. Also O(log n) so the "up next" feature doesn't add a per-tick
+  // cost.
+  function Bt_findNext(t) {
+    if (!tt.length) return -1;
+    let lo = 0,
+      hi = tt.length - 1,
+      best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const s = tt[mid];
+      if (s.segment[0] > t) {
+        best = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return best;
+  }
+  // Sort the segments by start time. Called once after a successful
+  // fetch.
+  function Bt_sortSegments() {
+    tt.sort((a, b) => a.segment[0] - b.segment[0]);
+  }
+  // Per-tick skip/mute handler. Replaces the original for..of loop with
+  // a single binary search. Once the player is inside a segment, the
+  // active index is cached for ~500ms so the same segment is checked
+  // on consecutive ticks without a fresh search; the cache is
+  // invalidated by seeking.
+  let St_activeIdx = -1;
+  let St_lastTickTime = -1;
+  function xt() {
+    const e = ie.el();
+    if (!e || e.paused || e.ended) {
+      kt();
+      St_activeIdx = -1;
       return;
-    const e = document.querySelector(".ytp-progress-list");
-    if (!e) return;
+    }
+    if (!tt.length) {
+      St_activeIdx = -1;
+      return;
+    }
+    Bt_loadOverrides();
+    const t = e.currentTime;
+    // The "up next" preview is a small floating chip shown when the
+    // next segment starts within sbUpNextSec. We render it via a
+    // standalone DOM element #ytp-sb-next; it stays sticky for 4s then
+    // auto-dismisses so it doesn't clutter the player.
+    const upNextSec = Number(S.sbUpNextSec) || 0;
+    if (upNextSec > 0) {
+      const next = Bt_findNext(t);
+      if (next >= 0) {
+        const s = tt[next];
+        const delta = s.segment[0] - t;
+        if (delta > 0 && delta <= upNextSec) {
+          Bt_showUpNext(s, delta);
+        } else {
+          Bt_hideUpNext();
+        }
+      } else {
+        Bt_hideUpNext();
+      }
+    } else {
+      Bt_hideUpNext();
+    }
+    // Skip/mute logic. Use the cached active index if it's still valid
+    // (player time still inside that segment).
+    let idx = St_activeIdx;
+    if (
+      idx < 0 ||
+      idx >= tt.length ||
+      t < tt[idx].segment[0] ||
+      t >= tt[idx].segment[1]
+    ) {
+      idx = Bt_findActive(t);
+      St_activeIdx = idx;
+    }
+    if (idx < 0) {
+      kt();
+      vt();
+      return;
+    }
+    const n = tt[idx];
+    const r = n.category;
+    if (!S["sb_" + r + "_en"] || S["sb_" + r + "_act"] === "disabled") return;
+    // Per-tick action resolution. ChannelId-based overrides need the
+    // current channel; we cache it for the duration of the playback
+    // since the channel doesn't change while watching a video.
+    const channelId = St_currentChannelId;
+    const action = Bt_resolveAction(n, channelId);
+    const isMute = action === "mute";
+    if (isMute) {
+      if (!dt) {
+        ct = e.volume;
+        st = e.muted;
+        e.muted = !0;
+        dt = !0;
+      }
+      bt(
+        (i.find((x) => x.id === r) || { label: r }).label,
+        n.segment[1] - t,
+      );
+      St_perCat[r] = (St_perCat[r] || 0) + 0;
+      return;
+    }
+    // Skip behavior. We use a per-UUID guard so a single segment is
+    // only counted once even if xt() runs multiple times while inside
+    // it (e.g. via the timeupdate + the 500ms interval fallback).
+    if (n.UUID && it.has(n.UUID)) {
+      kt();
+      vt();
+      return;
+    }
+    // For POI/chapter markers, the seekbar is the only output, no
+    // playback change.
+    if (n.actionType === "poi" || n.actionType === "chapter") return;
+    it.add(n.UUID || ("seg-" + idx + "-" + n.segment[0]));
+    const a = Math.max(0, n.segment[1] - t);
+    rt += a;
+    ot++;
+    St_perCat[r] = (St_perCat[r] || 0) + 1;
+    St_perCatSaved[r] = (St_perCatSaved[r] || 0) + a;
+    k("kv", { k: "__sb_saved__", v: rt });
+    k("kv", { k: "__sb_skips__", v: ot });
+    ft();
+    try {
+      e.currentTime = n.segment[1];
+    } catch (e2) {}
+    if (S.sbToast) {
+      const label = (i.find((x) => x.id === r) || { label: r }).label;
+      pe("Skipped " + label + " (" + ce(a) + ")", S.sbToastDur || 2200, "success");
+    }
+    // After the skip, fire the "viewedVideoSponsorTime" so SB's view
+    // count goes up. The endpoint is fire-and-forget; we don't block
+    // on the response.
+    try {
+      Bt_viewedSponsorTime(n.UUID);
+    } catch (e2) {}
+  }
+  // Per-tick at low frequency. Records the current channelId once
+  // (it's the same throughout the video) so per-channel overrides
+  // resolve without re-querying the DOM every tick.
+  let St_currentChannelId = "";
+  function Bt_recordChannelOnce() {
+    if (St_currentChannelId) return;
+    St_currentChannelId = Ne() || "";
+  }
+  // ---- Up-next preview chip --------------------------------------------
+  let St_upNextEl = null;
+  let St_upNextHideAt = 0;
+  function Bt_showUpNext(seg, deltaSec) {
+    if (!document.body) return;
+    if (!St_upNextEl) {
+      St_upNextEl = document.createElement("div");
+      St_upNextEl.id = "ytp-sb-next";
+      St_upNextEl.style.cssText =
+        "position:fixed;right:12px;bottom:80px;z-index:2147483636;background:rgba(20,22,28,.5);color:#eef;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 12px;font:11px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);box-shadow:0 6px 20px rgba(0,0,0,.4);display:flex;align-items:center;gap:8px;transition:opacity .25s,transform .25s;opacity:0;transform:translateY(6px);";
+      const dot = document.createElement("span");
+      dot.style.cssText =
+        "display:inline-block;width:8px;height:8px;border-radius:50%;";
+      St_upNextEl.appendChild(dot);
+      St_upNextEl._dot = dot;
+      const lbl = document.createElement("span");
+      St_upNextEl.appendChild(lbl);
+      St_upNextEl._lbl = lbl;
+      document.body.appendChild(St_upNextEl);
+    }
+    const color = Bt_color(seg.category);
+    St_upNextEl._dot.style.background = color;
+    St_upNextEl._dot.style.boxShadow = "0 0 6px " + color;
+    const label = (i.find((x) => x.id === seg.category) || { label: seg.category })
+      .label;
+    St_upNextEl._lbl.textContent =
+      label + " in " + Math.max(0, Math.round(deltaSec)) + "s";
+    St_upNextEl.style.opacity = "1";
+    St_upNextEl.style.transform = "translateY(0)";
+    St_upNextHideAt = Date.now() + 4000;
+  }
+  function Bt_hideUpNext() {
+    if (!St_upNextEl) return;
+    if (Date.now() < St_upNextHideAt) return;
+    St_upNextEl.style.opacity = "0";
+    St_upNextEl.style.transform = "translateY(6px)";
+  }
+  // ---- Seekbar marks (wt / Ct) ---------------------------------------
+  // The legacy wt() rebuilds every mark on every call, which is
+  // expensive on long videos. We now diff against the existing DOM:
+  // create marks for new segments, remove marks for gone segments,
+  // and only update style/position when the percentage changed.
+  let St_seekbarMarks = new Map(); // uuidOrKey -> element
+  function wt() {
+    if (!S.sponsorblockOn || !S.sbSeekbar) {
+      // Remove all existing marks when seekbar is disabled.
+      St_seekbarMarks.forEach((el) => {
+        try {
+          el.remove();
+        } catch (e) {}
+      });
+      St_seekbarMarks.clear();
+      return;
+    }
+    Bt_loadOverrides();
     const t = ie.el();
     if (!t || !t.duration || !isFinite(t.duration)) return;
     const a = t.duration;
-    for (const t of tt) {
-      const n = t.category;
-      if (!S["sb_" + n + "_en"]) continue;
-      const r = i.find((e) => e.id === n),
-        o = (t.segment[0] / a) * 100,
-        d = Math.max(0.15, ((t.segment[1] - t.segment[0]) / a) * 100),
-        c = document.createElement("div");
-      ((c.className = "ytp-sb-mark"),
-        (c.title =
-          (r ? r.label : n) +
-          " " +
-          ce(t.segment[0]) +
-          " - " +
-          ce(t.segment[1])),
-        (c.style.cssText =
-          "position:absolute;top:0;bottom:0;left:" +
-          o +
-          "%;width:" +
-          d +
-          "%;background:" +
-          (r ? r.color : "#fff") +
-          ";opacity:.75;pointer-events:none;z-index:31;border-radius:1px"),
-        e.appendChild(c));
+    const list = document.querySelector(".ytp-progress-list");
+    if (!list) {
+      // If the progress list isn't on the page yet, defer.
+      return;
+    }
+    // Build the desired set keyed by a stable id (UUID or "idx-start").
+    const desired = new Map();
+    for (let i2 = 0; i2 < tt.length; i2++) {
+      const seg = tt[i2];
+      const cat = seg.category;
+      if (!S["sb_" + cat + "_en"]) continue;
+      const key = seg.UUID || "i" + i2;
+      desired.set(key, { idx: i2, seg, cat });
+    }
+    // Remove marks no longer wanted.
+    for (const [k, el] of St_seekbarMarks) {
+      if (!desired.has(k)) {
+        try {
+          el.remove();
+        } catch (e) {}
+        St_seekbarMarks.delete(k);
+      }
+    }
+    // Add or update marks.
+    for (const [key, info] of desired) {
+      const seg = info.seg;
+      const cat = info.cat;
+      const isPoi = seg.actionType === "poi" || seg.actionType === "chapter";
+      const start = (seg.segment[0] / a) * 100;
+      const end = (seg.segment[1] / a) * 100;
+      const widthPct = Math.max(0.15, end - start);
+      const color = Bt_color(cat);
+      const label = (i.find((x) => x.id === cat) || { label: cat }).label;
+      const title =
+        label +
+        " " +
+        ce(seg.segment[0]) +
+        " - " +
+        ce(seg.segment[1]) +
+        " (" +
+        Math.round(seg.segment[1] - seg.segment[0]) +
+        "s)";
+      let el = St_seekbarMarks.get(key);
+      if (!el) {
+        el = document.createElement("div");
+        el.dataset.sbKey = key;
+        el.className = "ytp-sb-mark" + (isPoi ? " ytp-sb-poi" : "");
+        el.title = title;
+        list.appendChild(el);
+        St_seekbarMarks.set(key, el);
+      } else if (el.title !== title) {
+        el.title = title;
+      }
+      // POI/chapter markers get a different visual: a 3px-wide vertical
+      // bar instead of a 0.15%+ wide region. They signal "here's a
+      // notable moment" rather than "skip this block".
+      const css =
+        isPoi
+          ? "position:absolute;top:0;bottom:0;left:" +
+            start +
+            "%;width:3px;margin-left:-1.5px;background:" +
+            color +
+            ";opacity:.95;pointer-events:none;z-index:32;border-radius:1px;box-shadow:0 0 4px " +
+            color +
+            ";"
+          : "position:absolute;top:0;bottom:0;left:" +
+            start +
+            "%;width:" +
+            widthPct +
+            "%;background:" +
+            color +
+            ";opacity:.75;pointer-events:none;z-index:31;border-radius:1px;";
+      if (el.style.cssText !== css) el.style.cssText = css;
     }
   }
+  // Debounced repaint. 600ms in the legacy code, but we make it a
+  // config-driven knob (sbRepaintMs) and clamp to a sane range.
   function Ct() {
-    (clearTimeout(mt), (mt = setTimeout(wt, 600)));
+    clearTimeout(mt);
+    const delay = Math.max(120, Math.min(2000, Number(S.sbRepaintMs) || 600));
+    mt = setTimeout(wt, delay);
   }
+  // Invalidate the seekbar mark cache (used after a vote/ignore
+  // mutation so the marks re-render).
+  function Bt_invalidateMarks() {
+    St_seekbarMarks.forEach((el) => {
+      try {
+        el.remove();
+      } catch (e) {}
+    });
+    St_seekbarMarks.clear();
+    wt();
+  }
+  // Fire-and-forget: increment the view counter for a just-skipped
+  // segment. The endpoint is /api/viewedVideoSponsorTime with the
+  // standard set of params. A 404/410 is fine (segment was deleted
+  // concurrently).
+  function Bt_viewedSponsorTime(uuid) {
+    if (!uuid || !S.sbSubmitUserId) return;
+    const v = ie.videoId();
+    if (!v) return;
+    const url =
+      Bt_serverUrl() +
+      "/api/viewedVideoSponsorTime?UUID=" +
+      encodeURIComponent(uuid);
+    try {
+      he(url, { method: "POST" }).catch(() => {});
+    } catch (e) {}
+  }
+  // -------------------------------------------------------------------
+  // Vote / Edit / Ignore / Hide / Lock / Username / UserInfo / HideVideo
+  // -------------------------------------------------------------------
+  // These all return promises. Errors are non-fatal — they just toast.
+  function Bt_voteSponsorTime(uuid, type) {
+    if (!uuid) return Promise.reject(new Error("missing UUID"));
+    const v = ie.videoId();
+    if (!v) return Promise.reject(new Error("no video"));
+    return he(
+      Bt_serverUrl() +
+        "/api/voteSponsorTime?UUID=" +
+        encodeURIComponent(uuid) +
+        "&userID=" +
+        encodeURIComponent(S.sbSubmitUserId || "") +
+        "&type=" +
+        encodeURIComponent(type || 1),
+      { method: "POST" },
+    ).then((r) => {
+      if (!r.ok) throw new Error("vote failed: HTTP " + r.status);
+      pe("Vote recorded", 1500, "success");
+      yt.clear();
+      return St(at);
+    });
+  }
+  function Bt_postNoBody(path) {
+    return he(Bt_serverUrl() + path, { method: "POST" }).then((r) => {
+      if (!r.ok) throw new Error(path + ": HTTP " + r.status);
+      return r;
+    });
+  }
+  function Bt_ignoreSegment(uuid) {
+    if (!uuid) return Promise.reject(new Error("missing UUID"));
+    return Bt_postNoBody(
+      "/api/ignore?UUID=" + encodeURIComponent(uuid) + "&userID=" + encodeURIComponent(S.sbSubmitUserId || ""),
+    ).then(() => {
+      pe("Segment hidden", 1500, "success");
+      yt.clear();
+      St_segmentsRaw = Math.max(0, St_segmentsRaw - 1);
+      return St(at);
+    });
+  }
+  function Bt_unIgnoreSegment(uuid) {
+    if (!uuid) return Promise.reject(new Error("missing UUID"));
+    return Bt_postNoBody(
+      "/api/unIgnore?UUID=" + encodeURIComponent(uuid) + "&userID=" + encodeURIComponent(S.sbSubmitUserId || ""),
+    ).then(() => {
+      pe("Segment unhidden", 1500, "success");
+      yt.clear();
+      return St(at);
+    });
+  }
+  function Bt_hideVideo(videoId) {
+    if (!videoId) videoId = ie.videoId();
+    if (!videoId) return Promise.reject(new Error("no video"));
+    return Bt_postNoBody(
+      "/api/hideVideoSponsorTime?videoID=" +
+        encodeURIComponent(videoId) +
+        "&userID=" +
+        encodeURIComponent(S.sbSubmitUserId || ""),
+    ).then(() => {
+      pe("SB hidden on this video", 1500, "success");
+      yt.clear();
+      if (at) return St(at);
+    });
+  }
+  function Bt_unHideVideo(videoId) {
+    if (!videoId) videoId = ie.videoId();
+    if (!videoId) return Promise.reject(new Error("no video"));
+    return Bt_postNoBody(
+      "/api/unHideVideoSponsorTime?videoID=" +
+        encodeURIComponent(videoId) +
+        "&userID=" +
+        encodeURIComponent(S.sbSubmitUserId || ""),
+    ).then(() => {
+      pe("SB unhidden on this video", 1500, "success");
+      yt.clear();
+      if (at) return St(at);
+    });
+  }
+  function Bt_lockCategories(categories) {
+    if (!Array.isArray(categories) || !categories.length)
+      return Promise.reject(new Error("no categories"));
+    return he(
+      Bt_serverUrl() +
+        "/api/lockCategories?userID=" +
+        encodeURIComponent(S.sbSubmitUserId || "") +
+        "&categories=" +
+        encodeURIComponent(categories.join(",")),
+      { method: "POST" },
+    ).then((r) => {
+      if (!r.ok) throw new Error("lock failed: HTTP " + r.status);
+      pe("Categories locked", 1500, "success");
+      return r.json();
+    });
+  }
+  function Bt_setUsername(name) {
+    const uid = S.sbSubmitUserId;
+    if (!uid) return Promise.reject(new Error("no userID"));
+    return he(
+      Bt_serverUrl() +
+        "/api/username?userID=" +
+        encodeURIComponent(uid) +
+        "&username=" +
+        encodeURIComponent(name || ""),
+      { method: "POST" },
+    ).then((r) => {
+      if (!r.ok) throw new Error("set username failed: HTTP " + r.status);
+      pe("Username saved", 1500, "success");
+      return r.json();
+    });
+  }
+  async function Bt_getUsername() {
+    const uid = S.sbSubmitUserId;
+    if (!uid) return null;
+    const r = await he(
+      Bt_serverUrl() + "/api/username?userID=" + encodeURIComponent(uid),
+    );
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.username ? j.username : null;
+  }
+  async function Bt_getUserInfo() {
+    const uid = S.sbSubmitUserId;
+    if (!uid) return null;
+    try {
+      const r = await he(
+        Bt_serverUrl() + "/api/userInfo?userID=" + encodeURIComponent(uid),
+      );
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) {
+      return null;
+    }
+  }
+  // -------------------------------------------------------------------
+  // Public API surface used by the dashboard panel and external scripts
+  // via YTPlus.sb.* — kept stable across the rewrite.
+  // -------------------------------------------------------------------
+  const St_external = {
+    server: Bt_serverUrl,
+    health: Bt_health,
+    vote: Bt_voteSponsorTime,
+    ignore: Bt_ignoreSegment,
+    unIgnore: Bt_unIgnoreSegment,
+    hideVideo: Bt_hideVideo,
+    unHideVideo: Bt_unHideVideo,
+    lockCategories: Bt_lockCategories,
+    setUsername: Bt_setUsername,
+    getUsername: Bt_getUsername,
+    getUserInfo: Bt_getUserInfo,
+    color: Bt_color,
+    findActive: Bt_findActive,
+    findNext: Bt_findNext,
+    invalidateMarks: Bt_invalidateMarks,
+    resolveAction: Bt_resolveAction,
+    reload() {
+      const e = ie.videoId();
+      if (e) return St(e);
+    },
+    stats: () => ({ saved: rt, skips: ot, segments: tt.length }),
+  };
+  // -------------------------------------------------------------------
+  // The main fetcher. St(videoId) — fetches and applies segments for
+  // the given video. Honors the cache, backoff, dedup, and the new
+  // filters. Returns a promise that resolves when the new segments
+  // are in tt.
+  // -------------------------------------------------------------------
   async function St(e) {
     if ((nt && (clearInterval(nt), (nt = 0)), pt && ut)) {
       try {
         pt.removeEventListener("timeupdate", ut);
       } catch (e) {}
-      ((pt = null), (ut = null));
+      pt = null;
+      ut = null;
     }
-    if (
-      ((tt = []),
-      (it = new Set()),
-      (at = e),
-      kt(),
-      vt(),
-      Ct(),
-      !S.sponsorblockOn)
-    )
-      return;
+    tt = [];
+    it = new Set();
+    St_activeIdx = -1;
+    St_perCat = {};
+    St_perCatSaved = {};
+    St_currentChannelId = "";
+    Bt_hideUpNext();
+    at = e;
+    kt();
+    vt();
+    Bt_invalidateMarks();
+    if (!S.sponsorblockOn) return;
+    Bt_recordChannelOnce();
     try {
-      tt = await (async function (e) {
-        const t = i.filter((e) => S["sb_" + e.id + "_en"]).map((e) => e.id);
-        if (!t.length) return [];
-        const a = e + "|" + t.join(",") + "|" + (S.sbMinVotes || 0);
-        return (
-          yt.get(a) ||
-          gt("sb:" + a, async () => {
-            const n = (S.sbServer || r).replace(/\/$/, ""),
-              o = t.map((e) => "category=" + encodeURIComponent(e)).join("&");
-            let i;
-            if (S.sbPrivacy) {
-              const t = await (async function (e) {
-                const t = await crypto.subtle.digest(
-                  "SHA-256",
-                  new TextEncoder().encode(e),
-                );
-                return Array.from(new Uint8Array(t))
-                  .map((e) => e.toString(16).padStart(2, "0"))
-                  .join("")
-                  .slice(0, 4);
-              })(e);
-              i = n + "/api/skipSegments/" + t + "?" + o + "&service=YouTube";
-            } else
-              i =
-                n +
-                "/api/skipSegments?videoID=" +
-                encodeURIComponent(e) +
-                "&" +
-                o +
-                "&service=YouTube";
-            try {
-              const t = await he(i);
-              if (!t.ok) return [];
-              let n = await t.json();
-              if (S.sbPrivacy) {
-                const t = Array.isArray(n) && n.find((t) => t.videoID === e);
-                n = t ? t.segments : [];
+      const newSegs = await (async function (e) {
+        const enabledCats = i
+          .filter((c) => S["sb_" + c.id + "_en"])
+          .map((c) => c.id);
+        if (!enabledCats.length) return [];
+        // Cache key includes ALL filter settings so changing any of
+        // them in the dashboard invalidates the cache.
+        const filterKey = [
+          S.sbMinVotes || 0,
+          S.sbMinViews || 0,
+          S.sbMaxViews || 0,
+          S.sbIncludeLocked ? 1 : 0,
+          S.sbIncludeHidden ? 1 : 0,
+          S.sbIncludeIgnored ? 1 : 0,
+          S.sbTrimUUIDs ? 1 : 0,
+        ].join("|");
+        const ck = e + "|" + enabledCats.join(",") + "|" + filterKey;
+        // Cache hit?
+        const cached = yt.get(ck);
+        if (cached) {
+          if (cached._ts && Date.now() - cached._ts < St_cacheTTLms * Math.pow(2, St_backoff)) {
+            return cached.segments;
+          }
+        }
+        // Compute hash for privacy mode and build URL.
+        let hash = null;
+        if (S.sbPrivacy) hash = await Bt_videoHash(e);
+        const url = Bt_buildUrl(e, hash);
+        if (!url) return [];
+        return await gt("sb:" + ck, async () => {
+          try {
+            const r = await he(url);
+            if (!r.ok) {
+              // Backoff on 429 / 5xx so we don't hammer a struggling
+              // server. Successful 200s reset the backoff.
+              if (r.status === 429 || r.status >= 500) {
+                St_backoff = Math.min(5, St_backoff + 1);
+              } else {
+                St_backoff = 0;
               }
-              if (!Array.isArray(n)) return [];
-              const r = Number(S.sbMinVotes) || 0,
-                o = n.filter(
-                  (e) =>
-                    (e.votes || 0) >= r &&
-                    Array.isArray(e.segment) &&
-                    2 === e.segment.length,
-                );
-              return (yt.set(a, o), o);
-            } catch (e) {
-              return (h("sb fetch", e), []);
+              St_lastErr = "HTTP " + r.status;
+              St_lastFetch = Date.now();
+              St_fetchInFlight = Math.max(0, St_fetchInFlight - 1);
+              return cached ? cached.segments : [];
             }
-          })
-        );
+            let body = await r.json();
+            if (S.sbPrivacy) {
+              if (Array.isArray(body)) {
+                const hit = body.find((p) => p && p.hash === hash);
+                body = hit ? hit.segments : [];
+              } else {
+                body = [];
+              }
+            }
+            const filtered = Bt_filterSegments(body || []);
+            St_backoff = Math.max(0, St_backoff - 1);
+            St_lastErr = null;
+            St_lastFetch = Date.now();
+            St_segmentsRaw = filtered.length;
+            yt.set(ck, { _ts: Date.now(), segments: filtered });
+            return filtered;
+          } catch (e2) {
+            St_lastErr = String((e2 && e2.message) || e2);
+            St_lastFetch = Date.now();
+            return cached ? cached.segments : [];
+          }
+        });
       })(e);
+      tt = newSegs;
+      Bt_sortSegments();
     } catch (e) {
       tt = [];
     }
-    (ft(), Ct(), g.emit("sb.segments", { videoId: e, count: tt.length }));
+    ft();
+    Bt_invalidateMarks();
+    g.emit("sb.segments", { videoId: e, count: tt.length });
     const t = ie.el();
-    t
-      ? ((pt = t),
-        (ut = () => {
-          _a() || xt();
-        }),
-        t.addEventListener("timeupdate", ut))
-      : (nt = setInterval(() => {
-          _a() || document.hidden || xt();
-        }, 500));
+    if (t) {
+      pt = t;
+      ut = () => {
+        _a() || xt();
+      };
+      t.addEventListener("timeupdate", ut);
+    } else {
+      nt = setInterval(() => {
+        _a() || document.hidden || xt();
+      }, 500);
+    }
   }
+  function Tt() {
+    const e =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let t = "";
+    try {
+      const a = new Uint8Array(16);
+      crypto.getRandomValues(a);
+      for (let n = 0; n < 16; n++) t += e.charAt(a[n] % 64);
+      return t;
+    } catch (a) {
+      for (let a = 0; a < 16; a++)
+        t += e.charAt(Math.floor(64 * Math.random()));
+      return t;
+    }
+  }
+
   function Tt() {
     const e =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -5354,11 +6148,24 @@
       keys: [
         "sponsorblockOn",
         "sbServer",
+        "sbServerPreset",
         "sbPrivacy",
         "sbToast",
         "sbToastDur",
         "sbMinVotes",
+        "sbMinViews",
+        "sbMaxViews",
+        "sbIncludeLocked",
+        "sbIncludeHidden",
+        "sbIncludeIgnored",
+        "sbTrimUUIDs",
+        "sbSegOverrides",
+        "sbChanOverrides",
+        "sbChapterRules",
+        "sbUpNextSec",
+        "sbColorOverrides",
         "sbHud",
+        "sbHudStatus",
         "sbSeekbar",
       ].concat(i.flatMap((e) => ["sb_" + e.id + "_en", "sb_" + e.id + "_act"])),
       apply(e) {
@@ -5392,43 +6199,233 @@
         }
       },
       settings(e) {
-        (e.appendChild(
+        // Server preset (public instance picker) + custom URL. The
+        // preset selection drives the API host; sbServer is the custom
+        // override when sbServerPreset === "custom".
+        const presetRow = To("div", "ytp-row");
+        presetRow.appendChild(To("span", "ytp-lbl", "Server"));
+        const presetSel = document.createElement("select");
+        presetSel.className = "ytp-sel";
+        presetSel.dataset.key = "sbServerPreset";
+        Zi.forEach((z) => {
+          const opt = document.createElement("option");
+          opt.value = z.id;
+          opt.textContent = z.name;
+          presetSel.appendChild(opt);
+        });
+        presetSel.value = S.sbServerPreset || "ajay";
+        presetSel.addEventListener("change", () =>
+          Ta("sbServerPreset", presetSel.value),
+        );
+        presetRow.appendChild(presetSel);
+        e.appendChild(presetRow);
+        e.appendChild(_o("Custom server URL (when Server = Custom)", "sbServer"));
+        e.appendChild(
           Io("Privacy mode (hide video IDs from database server)", "sbPrivacy"),
-        ),
-          e.appendChild(Io("Skip notifications", "sbToast")),
-          e.appendChild(
-            No(
-              "Notify duration",
-              "sbToastDur",
-              500,
-              6e3,
-              100,
-              (e) => (e / 1e3).toFixed(1) + "s",
-            ),
+        );
+        e.appendChild(Io("Skip notifications", "sbToast"));
+        e.appendChild(
+          No(
+            "Notify duration",
+            "sbToastDur",
+            500,
+            6e3,
+            100,
+            (e2) => (e2 / 1e3).toFixed(1) + "s",
           ),
-          e.appendChild(
-            No("Minimum votes", "sbMinVotes", 0, 100, 1, (e) => e + " votes"),
+        );
+        e.appendChild(
+          No("Minimum votes", "sbMinVotes", 0, 100, 1, (e2) => e2 + " votes"),
+        );
+        e.appendChild(
+          No("Minimum views (0 = no min)", "sbMinViews", 0, 1e6, 10, (e2) =>
+            Math.round(e2).toString(),
           ),
-          e.appendChild(Io("Show sponsorship status box on screen", "sbHud")),
-          e.appendChild(
-            Io("Show sponsorship sections on the video timeline", "sbSeekbar"),
-          ));
+        );
+        e.appendChild(
+          No("Maximum views (0 = no max)", "sbMaxViews", 0, 1e7, 100, (e2) =>
+            Math.round(e2).toString(),
+          ),
+        );
+        e.appendChild(Io("Include locked segments", "sbIncludeLocked"));
+        e.appendChild(Io("Include hidden segments", "sbIncludeHidden"));
+        e.appendChild(Io("Include ignored segments", "sbIncludeIgnored"));
+        e.appendChild(Io("Trim UUIDs from response", "sbTrimUUIDs"));
+        e.appendChild(Io("Show sponsorship status box on screen", "sbHud"));
+        e.appendChild(Io("Show server status in HUD", "sbHudStatus"));
+        e.appendChild(
+          Io("Show sponsorship sections on the video timeline", "sbSeekbar"),
+        );
+        e.appendChild(
+          No(
+            "Up-next preview (seconds, 0 = off)",
+            "sbUpNextSec",
+            0,
+            60,
+            1,
+            (e2) => e2 + "s",
+          ),
+        );
         const t = To("div", "ytp-sub");
-        (i.forEach((e) => {
-          const a = "sb_" + e.id + "_en",
-            n = "sb_" + e.id + "_act",
+        // Per-category rows with enable toggle, action select, and
+        // color override swatch (double-click to reset to default).
+        i.forEach((e2) => {
+          const a = "sb_" + e2.id + "_en",
+            n = "sb_" + e2.id + "_act",
             r = To("span", "ytp-cat-dot");
-          r.style.background = e.color;
+          r.style.background = e2.color;
           const o = To("div", "ytp-row");
-          (o.appendChild(r),
-            o.appendChild(To("span", "ytp-lbl", e.label)),
-            o.appendChild(Bo(a)),
-            o.appendChild(
-              Po(n, { skip: "Skip", mute: "Mute", disabled: "Off" }),
+          o.appendChild(r);
+          o.appendChild(To("span", "ytp-lbl", e2.label));
+          o.appendChild(Bo(a));
+          o.appendChild(Po(n, Yi));
+          const sw = document.createElement("input");
+          sw.type = "color";
+          sw.className = "ytp-cp-native";
+          sw.style.cssText =
+            "width:30px;height:28px;padding:0;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:transparent;cursor:pointer";
+          try {
+            let cur = null;
+            try {
+              cur =
+                S.sbColorOverrides && JSON.parse(S.sbColorOverrides || "{}")[e2.id];
+            } catch (e3) {
+              cur = null;
+            }
+            sw.value = /^#[0-9a-fA-F]{6}$/.test(cur || "")
+              ? cur
+              : /^#[0-9a-fA-F]{6}$/.test(e2.color)
+                ? e2.color
+                : "#00d400";
+          } catch (e3) {
+            sw.value = "#00d400";
+          }
+          sw.addEventListener("input", () => {
+            let cur = {};
+            try {
+              cur = S.sbColorOverrides
+                ? JSON.parse(S.sbColorOverrides || "{}")
+                : {};
+            } catch (e4) {
+              cur = {};
+            }
+            cur[e2.id] = sw.value;
+            Ta(
+              "sbColorOverrides",
+              Object.keys(cur).length ? JSON.stringify(cur) : "",
+            );
+            Bt_invalidateMarks();
+          });
+          sw.addEventListener("dblclick", () => {
+            let cur = {};
+            try {
+              cur = JSON.parse(S.sbColorOverrides || "{}");
+            } catch (e5) {
+              cur = {};
+            }
+            delete cur[e2.id];
+            Ta(
+              "sbColorOverrides",
+              Object.keys(cur).length ? JSON.stringify(cur) : "",
+            );
+            sw.value = e2.color;
+            Bt_invalidateMarks();
+          });
+          o.appendChild(sw);
+          t.appendChild(o);
+        });
+        e.appendChild(t);
+        // Override JSON editors. The defaults are empty strings; both
+        // serialize to {} on first use.
+        e.appendChild(
+          Ho(
+            "Per-segment overrides (JSON: {uuid: 'skip'|'mute'|'poi'|'disabled'})",
+            "sbSegOverrides",
+            "Paste a JSON object. UUIDs are in /api/skipSegments response.",
+          ),
+        );
+        e.appendChild(
+          Ho(
+            "Per-channel overrides (JSON: {channelId: 'skip'|'mute'|'poi'|'disabled'})",
+            "sbChanOverrides",
+            "Channel IDs are the trailing path segment of /channel/<id> URLs.",
+          ),
+        );
+        e.appendChild(
+          Ho(
+            "Chapter title regex skip (JSON: {channelId: '/regex/flags'})",
+            "sbChapterRules",
+            "Chapter title (auto-generated) matching the channel's regex is auto-skipped.",
+          ),
+        );
+        // Per-video action buttons.
+        e.appendChild(To("div", "ytp-section-hdr", "This video"));
+        const ctrls = To("div", "ytp-rowb");
+        ctrls.appendChild(
+          Oo(
+            "Hide SB on this video",
+            () => {
+              Bt_hideVideo().then(
+                () => g.emit("sb.hidden"),
+                (e2) => pe("Hide failed: " + e2.message, 2e3, "error"),
+              );
+            },
+            "ytp-danger",
+          ),
+        );
+        ctrls.appendChild(
+          Oo(
+            "Un-hide SB on this video",
+            () => {
+              Bt_unHideVideo().then(
+                () => g.emit("sb.hidden"),
+                (e2) => pe("Un-hide failed: " + e2.message, 2e3, "error"),
+              );
+            },
+          ),
+        );
+        ctrls.appendChild(
+          Oo(
+            "Reload segments",
+            () => {
+              const vid = ie.videoId();
+              if (vid) St(vid);
+            },
+            "primary",
+          ),
+        );
+        e.appendChild(ctrls);
+        // User-stats preview (when sbSubmitUserId is set). Fetches
+        // /api/userInfo once and renders a one-line summary.
+        if (S.sbSubmitUserId) {
+          const statsRow = To("div", "ytp-sbsub-status");
+          statsRow.textContent = "Loading SB user stats...";
+          e.appendChild(statsRow);
+          Bt_getUserInfo().then((info) => {
+            if (!info) {
+              statsRow.textContent =
+                "No SB user stats (userID not registered).";
+              return;
+            }
+            const min = Math.round(info.minutesSaved || 0);
+            statsRow.textContent =
+              "SB stats: " +
+              (info.userName || "(no username)") +
+              " - " +
+              min +
+              " min saved - " +
+              (info.segmentCount || 0) +
+              " segments";
+          });
+        } else {
+          e.appendChild(
+            To(
+              "div",
+              "ytp-hist-note",
+              "Turn on “Submit Sponsorship Segments” to track your own SB stats (time saved, segment count, etc.) on the SB server.",
             ),
-            t.appendChild(o));
-        }),
-          e.appendChild(t));
+          );
+        }
       },
     }),
     xa.register({
@@ -17168,6 +18165,45 @@
   });
   let io = -1,
     co = -1;
+  // Live A/B overlay drawn on the seekbar while the user is marking a
+  // submit segment. Two thin vertical bars (A and B) plus a translucent
+  // region between them. Updated on timeupdate when sbSubmitOn is on.
+  let St_submitABOverlay = null;
+  function Bt_renderSubmitAB() {
+    if (!S.sbSubmitOn) {
+      if (St_submitABOverlay) {
+        St_submitABOverlay.remove();
+        St_submitABOverlay = null;
+      }
+      return;
+    }
+    if (io < 0 && co < 0) {
+      if (St_submitABOverlay) {
+        St_submitABOverlay.remove();
+        St_submitABOverlay = null;
+      }
+      return;
+    }
+    const list = document.querySelector(".ytp-progress-list");
+    if (!list) return;
+    const v = ie.el();
+    if (!v || !v.duration || !isFinite(v.duration)) return;
+    if (!St_submitABOverlay) {
+      St_submitABOverlay = document.createElement("div");
+      St_submitABOverlay.className = "ytp-sb-submit-marker";
+      St_submitABOverlay.style.cssText =
+        "position:absolute;top:0;bottom:0;pointer-events:none;z-index:33";
+    }
+    if (St_submitABOverlay.parentNode !== list) list.appendChild(St_submitABOverlay);
+    const a = io >= 0 ? (io / v.duration) * 100 : 0;
+    const b = co >= 0 ? (co / v.duration) * 100 : 0;
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const widthPct = Math.max(0, hi - lo);
+    St_submitABOverlay.style.left = lo + "%";
+    St_submitABOverlay.style.width = widthPct + "%";
+    St_submitABOverlay.style.background = "rgba(255,61,127,0.18)";
+  }
   xa.register({
     id: "sb-submit",
     name: "Submit Sponsorship Segments",
@@ -17175,7 +18211,19 @@
       "Help the community by marking sponsorship sections and sharing them. Choose categories like Sponsor, Self-promo, Intro, or Outro.",
     masterKey: "sbSubmitOn",
     keys: ["sbSubmitOn", "sbSubmitUserId"],
-    apply() {},
+    apply(e) {
+      if (!S.sbSubmitOn) return;
+      // Drive the live A/B overlay from the player timeupdate.
+      const v = ie.el();
+      if (v) {
+        e.addListener(v, "timeupdate", Bt_renderSubmitAB);
+        e.addListener(v, "durationchange", Bt_renderSubmitAB);
+      }
+      e.onNav(() => {
+        St_submitABOverlay &&
+          (St_submitABOverlay.remove(), (St_submitABOverlay = null));
+      });
+    },
     settings(e) {
       const t = To("div", "ytp-sbsub-panel");
       (e.appendChild(t),
@@ -21053,7 +22101,84 @@
         const e = ie.videoId();
         if (e) return St(e);
       },
-      stats: () => ({ saved: rt, skips: ot }),
+      stats: () => ({ saved: rt, skips: ot, segments: tt.length }),
+      health: Bt_health,
+      // Vote, ignore, lock, hide. All return promises; toast on success.
+      vote: (uuid, type) => Bt_voteSponsorTime(uuid, type || 1),
+      ignore: (uuid) => Bt_ignoreSegment(uuid),
+      unIgnore: (uuid) => Bt_unIgnoreSegment(uuid),
+      hideVideo: () => Bt_hideVideo(),
+      unHideVideo: () => Bt_unHideVideo(),
+      lockCategories: (cats) => Bt_lockCategories(cats),
+      setUsername: (name) => Bt_setUsername(name),
+      getUsername: () => Bt_getUsername(),
+      getUserInfo: () => Bt_getUserInfo(),
+      // Per-segment and per-channel override editors. These mutate
+      // the JSON config blob and call Bt_invalidateMarks() to refresh
+      // the seekbar without a full refetch.
+      setSegOverride: (uuid, action) => {
+        let cur = {};
+        try {
+          cur = S.sbSegOverrides ? JSON.parse(S.sbSegOverrides) : {};
+        } catch (e) {
+          cur = {};
+        }
+        if (!action) delete cur[uuid];
+        else cur[uuid] = action;
+        Ta(
+          "sbSegOverrides",
+          Object.keys(cur).length ? JSON.stringify(cur) : "",
+        );
+        Bt_invalidateMarks();
+      },
+      setChanOverride: (channelId, action) => {
+        let cur = {};
+        try {
+          cur = S.sbChanOverrides ? JSON.parse(S.sbChanOverrides) : {};
+        } catch (e) {
+          cur = {};
+        }
+        if (!action) delete cur[channelId];
+        else cur[channelId] = action;
+        Ta(
+          "sbChanOverrides",
+          Object.keys(cur).length ? JSON.stringify(cur) : "",
+        );
+        Bt_invalidateMarks();
+      },
+      // Per-channel chapter-title regex skip rules.
+      setChapterRule: (channelId, pattern) => {
+        let cur = {};
+        try {
+          cur = S.sbChapterRules ? JSON.parse(S.sbChapterRules) : {};
+        } catch (e) {
+          cur = {};
+        }
+        if (!pattern) delete cur[channelId];
+        else cur[channelId] = pattern;
+        Ta(
+          "sbChapterRules",
+          Object.keys(cur).length ? JSON.stringify(cur) : "",
+        );
+      },
+      // Mark A/B for the next submit.
+      markA: () => {
+        const e = ie.el();
+        if (e) ((io = e.currentTime), Bt_renderSubmitAB());
+      },
+      markB: () => {
+        const e = ie.el();
+        if (e) ((co = e.currentTime), Bt_renderSubmitAB());
+      },
+      clearMarks: () => {
+        io = -1;
+        co = -1;
+        Bt_renderSubmitAB();
+      },
+      getAB: () => ({ a: io, b: co }),
+      server: Bt_serverUrl,
+      serverUrl: Bt_serverUrl,
+      categories: () => i.map((c) => c.id),
     },
     net: {
       summary: (e) => dr(e || "all"),
@@ -21171,6 +22296,15 @@
           } catch (e) {}
           try {
             GM_registerMenuCommand("Toggle SponsorBlock on/off", () => Ta("sponsorblockOn", !S.sponsorblockOn));
+          } catch (e) {}
+          try {
+            GM_registerMenuCommand("SponsorBlock: reload segments", () => { const v = ie.videoId(); if (v) St(v); });
+          } catch (e) {}
+          try {
+            GM_registerMenuCommand("SponsorBlock: hide on this video", () => Bt_hideVideo().then(() => pe("SB hidden on this video", 1800, "success"), (e2) => pe("Hide failed: " + e2.message, 2200, "error")));
+          } catch (e) {}
+          try {
+            GM_registerMenuCommand("SponsorBlock: show my stats", () => { Bt_getUserInfo().then((info) => { if (!info) return pe("No SB user info (userID not set).", 2200, "error"); pe("SB: " + (info.userName || "(no username)") + " - " + Math.round(info.minutesSaved || 0) + " min - " + (info.segmentCount || 0) + " segs", 3500, "info"); }); });
           } catch (e) {}
           try {
             GM_registerMenuCommand("Bookmark this moment", et);

@@ -159,6 +159,89 @@ function deq(a, b, msg) {
     );
   }
 
+  // v3.0.18.5 regression: the privacy-mode post-fetch lookup was
+  // looking for `p.hash === hash` on the response, but the SponsorBlock
+  // server actually returns `{videoID, segments}` entries — never a
+  // `hash` field. So the lookup never matched and segments were
+  // silently dropped (segments count was 0 even when the response
+  // had entries for the requested video). The fix is to look up by
+  // `p.videoID === e` (the videoId passed into St()).
+  console.log("\n# Privacy mode extracts segments by videoID, not hash");
+  {
+    // Simulate a privacy-mode response. This is the actual shape the
+    // SB API returns in privacy mode: a list of {videoID, segments}
+    // entries (one per video that hashes into the same bucket).
+    const fakeResponse = [
+      {
+        videoID: "OTHERVIDEO1",
+        segments: [{ UUID: "x", category: "sponsor", segment: [10, 20] }],
+      },
+      {
+        videoID: "dQw4w9WgXcQ",
+        segments: [
+          {
+            UUID: "y",
+            category: "sponsor",
+            actionType: "skip",
+            segment: [1.0, 5.0],
+            videoDuration: 60,
+            votes: 0,
+            views: 0,
+          },
+        ],
+      },
+      {
+        videoID: "OTHERVIDEO2",
+        segments: [{ UUID: "z", category: "sponsor", segment: [3, 7] }],
+      },
+    ];
+    // Bump the cache by toggling filters — the cache key includes
+    // the filter state, so changing it forces a fresh fetch.
+    window.YTPlus.setCfg("sbPrivacy", true);
+    window.YTPlus.setCfg("sbMinVotes", 0);
+    window.YTPlus.setCfg("sbMinViews", 0);
+    window.YTPlus.setCfg("sbMaxViews", 0);
+    window.YTPlus.setCfg("sbIncludeLocked", false);
+    window.YTPlus.setCfg("sbIncludeHidden", false);
+    window.YTPlus.setCfg("sbIncludeIgnored", false);
+    // Bump the cache by flipping a filter that doesn't matter for
+    // the segments. sbMinVotes=0 already; force a fresh fetch by
+    // setting sbTrimUUIDs=false (different cache key from the prior
+    // test which left it true), then leave it off for the rest of
+    // this test to keep the cache miss.
+    window.YTPlus.setCfg("sbTrimUUIDs", false);
+    let responded = false;
+    const origXhr = window.GM_xmlhttpRequest;
+    window.GM_xmlhttpRequest = (opts) => {
+      setTimeout(() => {
+        responded = true;
+        opts.onload &&
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify(fakeResponse),
+            statusText: "OK",
+          });
+      }, 1);
+    };
+    await window.YTPlus.sb.reload();
+    for (let i = 0; i < 50 && !responded; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await new Promise((r) => setTimeout(r, 30));
+    const stats = window.YTPlus.sb.stats();
+    assert(
+      stats.segments === 1,
+      "privacy-mode picks the entry with matching videoID (got " +
+        stats.segments +
+        ", expected 1)",
+    );
+    window.GM_xmlhttpRequest = origXhr;
+    // Restore sbTrimUUIDs to its default and turn off privacy mode
+    // so the rest of the tests are unaffected.
+    window.YTPlus.setCfg("sbTrimUUIDs", true);
+    window.YTPlus.setCfg("sbPrivacy", false);
+  }
+
   console.log("\n# BT_buildUrl (filters)");
   // Force non-private mode and verify the URL contains the filters we
   // set. The cache is keyed off the config, so each setCfg should

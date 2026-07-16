@@ -15,6 +15,10 @@
 
 ---
 
+## What's new in v3.0.18.5
+
+- **SponsorBlock privacy-mode fix** — since v3.0.14 (over a year) the SB post-fetch lookup searched the response for `p.hash === hash`, but the SponsorBlock server actually returns `{videoID, segments}` entries — the `hash` field never existed. Privacy mode (default ON) silently returned zero segments for every video because the lookup never matched, even when the server's response had the data. This was masked through v3.0.18.3 because that release crashed with a `_dm` ReferenceError before SB ever ran, so the broken fetch never had a chance to fail visibly. v3.0.18.4 fixed the script load issue, which surfaced this latent SB regression: the script now loaded, but SB was still broken. Fix: look up the response by `p.videoID === e` (the videoId passed into the fetcher). One-line change; non-privacy mode was unaffected, so anyone who already turned off `sbPrivacy` was working fine. v3.0.18.4 (one-liner `_dm` ReferenceError fix) is still included and necessary; v3.0.18.5 is the additional one-line fix that makes SB actually work.
+
 ## What's new in v3.0.18.4
 
 - **Critical freeze fix** — v3.0.18.3 had a fresh `ReferenceError: assignment to undeclared variable _dm` on every page load. The data-minimization IIFE that lives at the top of the script (introduced in v3.0.16) had a bare `_dm = { … }` assignment under the outer IIFE's strict mode — same class of bug as the v3.0.18.2 `_dm_active` fix, but one level out. The throw fired in the synchronous part of the IIFE, before the async boot catch at the bottom of the file was even registered, so the script never finished evaluating. In Firefox the resulting partial-eval state has been observed to spam "out of memory" exceptions and freeze the tab. The fix declares `_dm` at the outer IIFE scope (`let _dm = null;`) and assigns the public surface inside the data-min block (`_dm = { … }`). The whole v3.0.18.3 memory protection system is still in place — this release just makes the script actually load.
@@ -465,7 +469,10 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.18.4 *(current)*
+### v3.0.18.5 *(current)*
+- SponsorBlock privacy-mode fix: since v3.0.14 the SB post-fetch lookup searched the response for `p.hash === hash`, but the SB API actually returns `{videoID, segments}` entries — the `hash` field never existed on response entries. With `sbPrivacy: true` (the default) every fetch returned zero segments even when the server had data, because the lookup never matched. Latent since v3.0.14, surfaced only after v3.0.18.4 fixed the script load issue. Fix: look up by `p.videoID === e` (the videoId passed into the fetcher). One-line change. Non-privacy mode was unaffected. v3.0.18.4's `_dm` ReferenceError fix is still required; v3.0.18.5 stacks on top of it.
+
+### v3.0.18.4
 - CRITICAL freeze fix: the data-minimization IIFE's outer `_dm = { ... }` was a bare assignment under the outer IIFE's strict mode, throwing `ReferenceError: assignment to undeclared variable _dm` on every page load. Same class of bug as the v3.0.18.2 `_dm_active` fix but one level out (the outer IIFE, not the inner `_dm_refresh` function). The throw fired during the synchronous IIFE evaluation, before the async boot catch at the bottom of the file was registered, so the script never finished loading and the tab could freeze with "out of memory" spam. Fix: hoist `_dm` to the outer IIFE scope as `let _dm = null;` and assign the public surface inside the data-min block. The v3.0.18.3 memory protection system is still in place — this release makes the script actually load.
 
 ### v3.0.18.3

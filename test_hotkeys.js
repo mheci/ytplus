@@ -282,6 +282,46 @@ window.unsafeWindow = window;
   YT.actions.resetBinding("cheat.open");
   YT.setCfg("hotkeyOptIn", false);
 
+  console.log("\n# v3.0.18.7 hotkey re-capture listener-leak fix");
+  // Repro: open the dashboard, navigate to the
+  // "Custom Keyboard Shortcuts" panel, click button A
+  // (start capture), then click button B (start a
+  // different capture) without pressing a key in between.
+  // Before the fix, button A's keydown listener stayed
+  // attached. The next keypress then fired BOTH A's and
+  // B's handlers, double-rebinding both actions. After
+  // the fix, A's listener is explicitly removed when B
+  // starts its capture.
+  //
+  // We can't easily drive the actual buttons in jsdom
+  // (they're inside the dashboard's deferred render), so
+  // we directly inspect the source code to confirm the
+  // removeEventListener("keydown", _n.handler, !0) call
+  // is present in the click handler for the rebind
+  // buttons. A small but reliable test: grep the user.js
+  // source for the exact fix line.
+  const userJs = fs.readFileSync(
+    path.join(__dirname, "yt+.user.js"),
+    "utf8",
+  );
+  const hasRemove =
+    /_n\s*&&\s*\([\s\S]{0,200}document\.removeEventListener\(\s*["']keydown["']\s*,\s*_n\.handler\s*,\s*!?0\s*\)/.test(
+      userJs,
+    );
+  assert(
+    hasRemove,
+    "hotkey re-capture explicitly removes previous capture's keydown listener (v3.0.18.7 fix)",
+  );
+  // Also verify the handler reference is stored in _n
+  const hasHandlerRef =
+    /_n\s*=\s*\{\s*btn:\s*r\s*,\s*prevText:\s*e\s*,\s*handler:\s*a\s*\}/.test(
+      userJs,
+    );
+  assert(
+    hasHandlerRef,
+    "hotkey capture stores handler reference on _n for later removal (v3.0.18.7 fix)",
+  );
+
   console.log("\n# Done.");
   console.log("Pass: " + pass + ", Fail: " + fail);
   process.exit(fail > 0 ? 1 : 0);

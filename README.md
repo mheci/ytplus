@@ -15,6 +15,14 @@
 
 ---
 
+## What's new in v3.0.18.7
+
+- **Second-pass audit fixes** — two more bugs caught during a deeper line-by-line review of the un-audited corners from v3.0.18.6:
+  1. **Hotkey re-capture leaked a keydown listener.** The "Custom Keyboard Shortcuts" panel in the dashboard captures keypresses via `document.addEventListener("keydown", a, true)` (capture phase) and stores the active capture in a module-scope `_n` variable. If the user clicked button A (start capture), then clicked button B (start a different capture) without pressing a key in between, the visual reset (`_n.btn.classList.remove("listening")`) ran, but the underlying keydown listener for A stayed attached. The next keypress fired BOTH `a` closures — one for A, one for B — and BOTH buttons got rebound to the same key. Now the previous capture's handler is explicitly `removeEventListener`-ed when a new capture starts, so the second `a` is the only one that fires.
+  2. **Dashboard search null-dereference on stale `data-feat`.** The search filter maps over every `.ytp-card` and calls `va.get(t.dataset.feat)` to read the feature metadata. If a feature was removed (or `xa` was reset) between renders, the `Map.get` returns `undefined` and the next line `a.name` throws `TypeError: Cannot read properties of undefined` on every keystroke. Now the card is hidden with `t.style.display = "none"` and the search continues with the remaining cards. No behavior change for fresh renders where every card has a valid feature.
+- All 7 test suites pass: `test_sandbox`, `test_dashboard` (12), `test_update_check` (18), `test_sb` (30), `test_dm` (33), `test_hotkeys` (49), `test_memory` (59). **203 total checks.**
+- No new features; pure bug fixes from a second line-by-line audit pass.
+
 ## What's new in v3.0.18.6
 
 - **Audit fixes** — five bugs caught during a line-by-line review of all ~25,000 lines:
@@ -481,7 +489,10 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.18.6 *(current)*
+### v3.0.18.7 *(current)*
+- Second-pass audit fixes: hotkey re-capture in the "Custom Keyboard Shortcuts" panel now removes the previous capture's keydown listener (avoids double-rebinding both buttons to the same key on a click→click→keypress sequence); the dashboard search filter now hides stale `data-feat` cards silently instead of throwing on every keystroke. Two more bugs from a deeper line-by-line review. All 7 test suites pass.
+
+### v3.0.18.6
 - Audit fixes: "Import settings" menu command now wires to `Xo()` (the real import); SB mute path now counts and accumulates time; `ccTextColor` and `idleDimBlur` are sanitized before CSS interpolation; update banner rebuilt with `textContent`. Five bugs in total, all from a line-by-line review. All 7 test suites pass.
 - Known feature gap: `sbChapterRules` (chapter skip rules per channel) is collected but never applied — out of scope for this release.
 

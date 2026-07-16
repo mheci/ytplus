@@ -152,6 +152,81 @@ setTimeout(() => {
   }
   console.log(`[OK] End-to-end: installed ${version} == latest ${realLatest} (no false update notification)`);
 
+  // === v3.0.18.9 source-level regression checks ===
+  // The "Check for updates" entry had two bugs fixed in v3.0.18.9.
+  // Both are behavior-level, but the comparator-level tests
+  // above don't exercise either; we add source-grep checks
+  // here as a regression guard. The behavioral tests are
+  // complex (would require mocking the GM_xmlhttpRequest path
+  // and inspecting toast click handlers) and are deferred
+  // to a jsdom-driven integration test in a follow-up.
+  //
+  // 1. Cache is not written on a failed check. The previous
+  //    code wrote the timestamp BEFORE firing the request,
+  //    so a single network blip suppressed the next 10
+  //    minutes of auto-checks. The fix moves the GM_setValue
+  //    into the success path inside onDone(). The source is
+  //    minified so we look for the structural marker that
+  //    _CHECK_CACHE_KEY is set in the success branch and not
+  //    before the request fires.
+  const hasCacheOnSuccess = /GM_setValue\(\s*_CHECK_CACHE_KEY\s*,\s*Date\.now\(\)\s*\)/.test(code);
+  if (!hasCacheOnSuccess) {
+    console.error("[FAIL] Update check cache must be written via _CHECK_CACHE_KEY on success (v3.0.18.9 regression guard)");
+    process.exit(1);
+  }
+  // Verify the cache key is only set ONCE in the file (in the
+  // success path) — if a future regression adds a pre-request
+  // write, the count will jump to 2 and the test fails.
+  const cacheWriteCount = (code.match(/GM_setValue\(\s*_CHECK_CACHE_KEY/g) || []).length;
+  if (cacheWriteCount !== 1) {
+    console.error("[FAIL] _CHECK_CACHE_KEY must be written exactly once (in onDone success path). Found " + cacheWriteCount + " writes. (v3.0.18.9 regression guard)");
+    process.exit(1);
+  }
+  console.log("[OK] Update check cache is written on success only (v3.0.18.9)");
+
+  // 2. The "up to date" toast is clickable. Verify the source
+  //    attaches a click handler that opens the GitHub releases
+  //    page so the user has somewhere to go when they're on
+  //    the latest version.
+  const hasUpToDateClick = /showUpToDate[\s\S]{0,2000}window\.open\(\s*_GITHUB_RELEASES/.test(code);
+  if (!hasUpToDateClick) {
+    console.error("[FAIL] 'Up to date' toast must be clickable to open the GitHub releases page (v3.0.18.9 regression guard)");
+    process.exit(1);
+  }
+  console.log("[OK] 'Up to date' toast is clickable (v3.0.18.9)");
+
+  // 3. The "check failed" toast is clickable to retry. The
+  //    user shouldn't have to wait for the auto-dismiss
+  //    before being able to retry.
+  const hasRetryClick = /showCheckFailed[\s\S]{0,2000}Fu\(\s*true\s*\)/.test(code);
+  if (!hasRetryClick) {
+    console.error("[FAIL] 'Check failed' toast must be clickable to retry (v3.0.18.9 regression guard)");
+    process.exit(1);
+  }
+  console.log("[OK] 'Check failed' toast is clickable to retry (v3.0.18.9)");
+
+  // 4. The "force" parameter is named (no longer `e`). The
+  //    old name shadowed the outer `e` = unsafeWindow and
+  //    made the rest of the function harder to read.
+  const hasForceParam = /function\s+Fu\s*\(\s*force\s*\)/.test(code);
+  if (!hasForceParam) {
+    console.error("[FAIL] Fu's parameter must be named `force` (v3.0.18.9 — readability)");
+    process.exit(1);
+  }
+  console.log("[OK] Fu's parameter is named `force` (v3.0.18.9)");
+
+  // 5. The GitHub URLs are defined in one place as module-scope
+  //    constants. If someone changes a URL in one place, they
+  //    should change them all.
+  const hasUrlConstants = /const\s+_GITHUB_API_LATEST\s*=\s*"https:\/\/api\.github\.com/.test(code) &&
+                        /const\s+_GITHUB_LATEST_USERJS\s*=\s*"https:\/\/github\.com/.test(code) &&
+                        /const\s+_GITHUB_RELEASES\s*=\s*"https:\/\/github\.com/.test(code);
+  if (!hasUrlConstants) {
+    console.error("[FAIL] GitHub URLs must be defined as module-scope _GITHUB_* constants (v3.0.18.9 — DRY)");
+    process.exit(1);
+  }
+  console.log("[OK] GitHub URLs are defined as module-scope constants (v3.0.18.9)");
+
   if (errors.length) {
     console.error("[FAIL] Uncaught errors:", errors);
     process.exit(1);

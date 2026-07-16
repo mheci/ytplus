@@ -15,6 +15,18 @@
 
 ---
 
+## What's new in v3.0.18.9
+
+- **"Check for updates" entry improvements** — the userscript-manager menu entry now does more than just say "up to date" or "failed":
+  1. **"Up to date" toast is now clickable.** Previously, when you were on the latest version the script showed a toast that disappeared after 4 seconds. The new toast is a button: clicking it opens the GitHub releases page where you can read the per-version changelogs. The auto-update check only compares version strings; it doesn't surface release notes, so this was the only way to get there.
+  2. **"Check failed" toast is now clickable to retry.** Previously, when a check failed (network blip, GitHub rate-limit, etc.) the toast just sat there for 4 seconds and disappeared. You had to wait, then click "Check for updates" again. The new toast is a button: clicking it immediately re-runs the check.
+  3. **Cache is now written only on successful response.** The previous code wrote the cache timestamp BEFORE firing the request, so a single network blip would suppress the next 10 minutes of auto-checks. Now the cache is written inside the success branch of `onDone()`. Manual checks (`force=true`) still update the cache so two manual clicks within 10 minutes are throttled.
+  4. **GitHub URLs centralized as module-scope constants** (`_GITHUB_API_LATEST`, `_GITHUB_LATEST_USERJS`, `_GITHUB_RELEASES`, `_CHECK_CACHE_KEY`). One place to audit outbound links.
+  5. **`Fu`'s parameter renamed from `e` to `force`.** The old name shadowed the outer `e` (= `unsafeWindow`) and made the rest of the function harder to read.
+- **Latest-seen version exposed on `window.__ytplusLastSeenLatest`** so external scripts can read what the most recent successful check reported.
+- All 7 test suites pass: `test_sandbox`, `test_dashboard` (12), `test_update_check` (23), `test_sb` (30), `test_dm` (33), `test_hotkeys` (59), `test_memory` (59). **218 total checks.**
+- No new features; pure UX improvement on the existing "Check for updates" entry.
+
 ## What's new in v3.0.18.8
 
 - **Third-pass audit fixes** — four more bugs and one structural refactor from a deeper, integrated review of the v3.0.18.6 / v3.0.18.7 surface:
@@ -500,7 +512,11 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.18.8 *(current)*
+### v3.0.18.9 *(current)*
+- "Check for updates" entry improvements: "up to date" toast is now clickable to open the GitHub releases page (so users can read per-version changelogs); "check failed" toast is now clickable to retry; the cache timestamp is now written only on successful response (so a single network blip no longer suppresses the next 10 minutes of auto-checks); the GitHub URLs are defined once as module-scope constants; the `Fu` parameter is now named `force` instead of shadowing the outer `e` (unsafeWindow). All 7 test suites pass (218 checks).
+- 5 new source-grep regression tests in `test_update_check.js` ensure the bug class doesn't reappear (cache written once, toast click handlers present, etc.).
+
+### v3.0.18.8
 - Third-pass audit fixes: bookmark id now includes `Date.now()` so two bookmarks at the same position don't collide (silent data loss fix); hotkey re-capture lifecycle centralized in `_nClear()` so the listener-leak class of bug is structurally impossible; resume overlay thumbnails use full `encodeURI()` for CSS url() hardening; dashboard title uses `createElement` + `textContent` for consistency. Action registry integrity check added to `test_hotkeys.js` (every action has a unique id, non-empty label, registry has 30+ actions). All 7 test suites pass (213 checks).
 - Behavioral tests in `test_hotkeys.js`: the v3.0.18.7 fixes (hotkey re-capture leak, dashboard search null-deref) are now exercised by actually driving the dashboard in jsdom instead of just grepping the source. This catches the bug class regardless of how the fix is written.
 

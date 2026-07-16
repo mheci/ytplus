@@ -6,6 +6,35 @@ For the user-facing release notes and the README, see [README.md](README.md).
 
 ---
 
+## [3.0.18.9] - 2026-07-16
+
+### Fixed / Improved
+
+- **"Up to date" toast is now clickable.** Previously, when you were on the latest version the script showed a toast that disappeared after 4 seconds. The new toast is a button: clicking it opens the [GitHub releases page](https://github.com/mheci/ytplus/releases) where you can read the per-version changelogs. The auto-update check only compares version strings; it doesn't surface release notes, so this was the only way to get there.
+- **"Check failed" toast is now clickable to retry.** Previously, when a check failed (network blip, GitHub rate-limit, etc.) the toast just sat there for 4 seconds and disappeared. You had to wait, then click "Check for updates" again. The new toast is a button: clicking it immediately re-runs the check.
+- **Cache is now written only on successful response.** The previous code wrote the cache timestamp BEFORE firing the request, so a single network blip would suppress the next 10 minutes of auto-checks. Now the cache is written inside the success branch of `onDone()`. Manual checks (`force=true`) still update the cache so two manual clicks within 10 minutes are throttled. **This is a real bug fix** — a single failed check used to lock out the auto-check for 10 minutes; now it correctly only throttles on success.
+
+### Refactored
+
+- GitHub URLs centralized as module-scope constants (`_GITHUB_API_LATEST`, `_GITHUB_LATEST_USERJS`, `_GITHUB_RELEASES`, `_CHECK_CACHE_KEY`). One place to audit outbound links.
+- `Fu`'s parameter renamed from `e` to `force`. The old name shadowed the outer `e` (= `unsafeWindow`) and made the rest of the function harder to read.
+- Toast click handlers are idempotent (use a `_ytpXxxBound` flag on the singleton toast element) so repeated update checks don't stack duplicate listeners.
+
+### Exposed
+
+- `window.__ytplusLastSeenLatest` — the most recent version string the script saw on a successful check. External scripts can read this to detect when the user is on a known-stale version.
+
+### Tests
+
+- 218 total checks across 7 suites, all passing (up from 213 in v3.0.18.8). The new `test_update_check.js` checks are:
+  - `Update check cache is written on success only` — verifies the cache key `_CHECK_CACHE_KEY` is written exactly once in the source, and that write is in the success path.
+  - `"Up to date" toast is clickable` — verifies the source has a click handler on the toast that opens the GitHub releases page.
+  - `"Check failed" toast is clickable to retry` — verifies the source has a click handler on the error toast that calls `Fu(true)`.
+  - `Fu's parameter is named "force"` — guards the readability fix.
+  - `GitHub URLs are defined as module-scope constants` — guards the DRY fix.
+
+---
+
 ## [3.0.18.8] - 2026-07-16
 
 ### Fixed

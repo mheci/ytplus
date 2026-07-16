@@ -4,7 +4,7 @@
 
 **Make YouTube yours.** A single userscript that fixes the ads, kills the clutter, kills the telemetry, themes the site, captures screenshots, skips sponsors, remembers where you stopped, and gives you back the keyboard.
 
-[![Version](https://img.shields.io/badge/version-3.0.17-ff3d7f)](#whats-new)
+[![Version](https://img.shields.io/badge/version-3.0.18-ff3d7f)](#whats-new)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Greasy Fork compatible](https://img.shields.io/badge/greasyfork-compatible-success)](https://greasyfork.org)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](yt+.user.js)
@@ -12,6 +12,31 @@
 **[Add to your browser →](https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js)**
 
 </div>
+
+---
+
+## What's new in v3.0.18
+
+- **Hotkeys everywhere** — the hotkey system now covers every module of the userscript. 30+ new actions added: playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on the current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show cheat sheet, check for updates, export/import settings). All new actions are rebindable from the existing **Custom Keyboard Shortcuts** panel in the dashboard.
+- **Command palette** — `Ctrl+Shift+K` opens a glass modal that fuzzy-matches every registered action and every feature toggle. `Enter` runs, `Esc` closes, arrows navigate. Type `set speedDefault 1.5` to write directly to config. The palette doubles as a launcher: a single keystroke flips any feature, runs any action, or sets any config value.
+- **Cheat sheet** — `?` opens a full-screen hotkey reference, filterable, organized by category (playback / modules / sponsorblock / global / dashboard / legacy). Updates live as you re-bind keys.
+- **Keyboard-friendly dashboard** — when the dashboard is open, the global keydown handler now also accepts `?` to open the cheat sheet and `/` to focus the search box. Future versions will add j/k card navigation (the infrastructure is in place; the test suite covers it).
+- **Action registry on `YTPlus`** — every action is reachable programmatically:
+  ```js
+  YTPlus.actions.list()              // array of {id, label, cat, def, binding}
+  YTPlus.actions.get(id)             // {id, label, cat, def, binding} | null
+  YTPlus.actions.run(id)             // boolean
+  YTPlus.actions.setBinding(id, key) // boolean
+  YTPlus.actions.resetBinding(id)    // boolean
+  YTPlus.actions.conflicts()         // {KeyQ: ['dm.showCount', 'update.check']}
+  YTPlus.palette.open(q)             // q optional pre-fill
+  YTPlus.palette.close()
+  YTPlus.palette.isOpen()
+  YTPlus.cheat.open() / .close() / .isOpen()
+  ```
+- **New test file** `test_hotkeys.js` (49 assertions) locks down the registry, the conflict detector, the public surface, and the global dispatch. `release.sh` now runs all 6 test suites. The 5-suite run you know (`test_sandbox`, `test_dashboard`, `test_update_check`, `test_sb`, `test_dm`) is unchanged.
+
+For everything that came before this, see the [release history](#release-history).
 
 ---
 
@@ -259,7 +284,7 @@ YT+ has **120+ features** grouped into 16 categories. Every feature is off by de
 
 ## Default menu
 
-When you install YT+, the userscript manager's menu gains ten commands:
+When you install YT+, the userscript manager's menu gains sixteen commands:
 
 1. **Open YT+ dashboard** (`Alt+Y`)
 2. **Mark this video as watched** (`Shift+W`)
@@ -274,10 +299,105 @@ When you install YT+, the userscript manager's menu gains ten commands:
 11. **Re-enable features that crashed earlier**
 12. **Data minimization: ON / OFF** *(click to toggle)*
 13. **Data minimization: show count**
+14. **Open command palette** (`Ctrl+Shift+K`)
+15. **Show hotkey cheat sheet** (`?`)
+16. **Focus dashboard search** (`Ctrl+F`)
 
-Every one of those except the dashboard toggle is also available as a hotkey once enabled.
+Every one of those except the dashboard toggle is also available as a hotkey once enabled. See the **Hotkeys** section for the full list of 30+ actions registered in v3.0.18.
 
 ---
+
+## Hotkeys
+
+v3.0.18 adds a unified hotkey system that covers every module. The full list of 30+ actions (defaults; every binding is rebindable from the dashboard's "Custom Keyboard Shortcuts" panel or programmatically via `YTPlus.actions.setBinding`):
+
+### Global
+
+| Key | Action |
+|---|---|
+| `Ctrl+Shift+K` | Open command palette |
+| `?` | Show hotkey cheat sheet |
+| `Alt+Y` | Open / close dashboard |
+| `Ctrl+F` | Focus dashboard search |
+| `Ctrl+S` | Check for updates (via menu) |
+| `Ctrl+E` | Export settings to file (via menu) |
+| `Ctrl+I` | Import settings from file (via menu) |
+
+### Playback
+
+| Key | Action |
+|---|---|
+| `K` | Play / pause |
+| `M` | Mute / unmute |
+| `J` | Seek -10s |
+| `L` | Seek +10s |
+| `←` | Seek -5s |
+| `→` | Seek +5s |
+| `,` (Comma) | Speed down (-0.25x) |
+| `.` (Period) | Speed up (+0.25x) |
+| `0` | Reset speed to 1x |
+| `R` | Toggle loop |
+| `T` | Toggle theater mode |
+| `F` | Toggle fullscreen |
+| `C` | Toggle captions |
+| `Shift+C` | Toggle cinema mode |
+| `Shift+A` | Toggle ambient mode |
+| `Shift+T` | Toggle wide theater |
+| `Shift+S` | Stop playback (reset + pause) |
+| `X` | Screenshot frame |
+| `P` | Toggle Picture-in-Picture |
+
+### Modules
+
+| Key | Action |
+|---|---|
+| `B` | Bookmark current time |
+| `Shift+W` | Mark this video as watched |
+| `Alt+W` | Toggle Watch Later |
+| `Alt+U` | Toggle Subscribe |
+| `Shift+D` | Toggle data minimization |
+| `Shift+B` | Toggle SponsorBlock |
+
+### SponsorBlock
+
+| Key | Action |
+|---|---|
+| *(menu)* | SponsorBlock: reload segments |
+| *(menu)* | SponsorBlock: hide on this video |
+| *(menu)* | SponsorBlock: vote up current segment |
+| *(menu)* | SponsorBlock: vote down current segment |
+
+### Command palette (Ctrl+Shift+K)
+
+Fuzzy-matches every action above and every feature toggle in the dashboard. Special syntax:
+
+- `set speedDefault 1.5` — write a config value (number, boolean, or string)
+- `toggle dataMinimizationOn` — flip a boolean
+- `play.togglePlay` — run an action by id
+- `SponsorBlock` — fuzzy-match a feature by name (e.g. typing "sponsor" shows all SB actions and the feature itself; `Enter` on the feature row toggles its master)
+
+### Programmatic API
+
+```js
+// List every action with its current binding
+YTPlus.actions.list();
+// => [{id: "palette.open", label: "Open command palette", cat: "global", def: "Ctrl+Shift+KeyK", binding: "Ctrl+Shift+KeyK"}, ...]
+
+// Re-bind an action
+YTPlus.actions.setBinding("play.togglePlay", "Space");
+// Reset to default
+YTPlus.actions.resetBinding("play.togglePlay");
+// Run an action by id
+YTPlus.actions.run("dm.toggle");
+// Detect conflicts
+YTPlus.actions.conflicts();
+// => {KeyQ: ["dm.showCount", "update.check"]}  // or {} if clean
+
+// Palette + cheat
+YTPlus.palette.open("sponsor");  // pre-fill the search
+YTPlus.palette.close();
+YTPlus.cheat.open();
+```
 
 ## Architecture
 
@@ -299,13 +419,14 @@ YT+ is designed to add less than 30ms to your YouTube page load, use less than 2
 
 ## Testing
 
-Each release is verified against five test suites:
+Each release is verified against six test suites:
 
 - `test_sandbox.js` — JSDOM-based smoke test that mocks all `GM_*` APIs and counts registered features, registered menu items, and any thrown errors
 - `test_dashboard.js` — dashboard perf benchmarks
 - `test_update_check.js` — version comparator edge cases (the `"3.0.12"[2] === "2"` bug)
 - `test_sb.js` — SponsorBlock filters, action resolution, cache key derivation
 - `test_dm.js` — data minimization: master toggle, sub-toggles, XHR/fetch/beacon short-circuit, byHost tracking, `shouldDrop()` API, public surface, master re-arm
+- `test_hotkeys.js` — v3.0.18 hotkey registry: action registration, binding storage, conflict detection, dispatch with modifiers, public `YTPlus.actions` / `.palette` / `.cheat` surface, global keydown integration
 
 Run them with `node test_*.js` (requires `npm install` for the `jsdom` dependency).
 
@@ -323,7 +444,16 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.17 *(current)*
+### v3.0.18 *(current)*
+- Hotkey system extended to every module: 30+ new actions (playback, data min, SponsorBlock, bookmarks, force-watched, sleep timer, theme, dashboard, global)
+- Command palette (Ctrl+Shift+K) with fuzzy search over actions + features
+- Cheat sheet (?) with filterable hotkey reference
+- Dashboard keyboard-friendly (?, /, future j/k/Enter)
+- New `test_hotkeys.js` (49 assertions) for the action registry
+- `release.sh` now runs all 6 test suites
+- Public `YTPlus.actions` / `.palette` / `.cheat` API
+
+### v3.0.17
 - Update banner / toast now opens `yt+.user.js` (not `yt+.meta.js`) on click, so the "YT+ vX.Y.Z available" toast is a single-click install. The `@updateURL` header still points at the cheap `meta.js` for background polls.
 - New `LICENSE` file in the repo (GPL-3.0-or-later) — `@license` header was already there but the actual file was missing. Now downloadable alongside the userscript.
 

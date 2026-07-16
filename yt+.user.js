@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.18.3
-// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
+// @version      3.0.18.4
+// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.4: CRITICAL freeze fix. v3.0.18.3 had a ReferenceError in the data-minimization IIFE: the outer `_dm = { ... }` was a bare assignment under strict mode (no `var`/`let`/`const`), which throws "ReferenceError: assignment to undeclared variable _dm" on every page load. The boot catch at the end of the script couldn't save it because the throw happened during the synchronous IIFE evaluation, before the async catch was even registered. The fix is one line — `const _dm = { ... }` — but it makes the entire script load again, including the v3.0.18.3 memory protection system. The inner `_dm_active` typo from v3.0.18.2 was already fixed in v3.0.18.3; v3.0.18.4 closes the same class of bug one level out. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -12226,6 +12226,20 @@
   // Module-scoped state lives directly in the outer IIFE so the
   // public `YTPlus.dataMin` surface (defined later as `ti.dataMin`)
   // can reference it without crossing scope boundaries.
+  //
+  // v3.0.18.4 — `_dm` is declared here at the outer IIFE scope so the
+  // `YTPlus.dataMin` block (built several thousand lines later) can
+  // reach it. v3.0.16–v3.0.18.3 used a bare `_dm = { ... }` inside a
+  // `try { ... } catch { m("dm init", e); }`, which is an
+  // `ReferenceError: assignment to undeclared variable _dm` under
+  // strict mode (the outer IIFE has `"use strict"` on line 42). The
+  // throw fired in the synchronous part of the IIFE, before the async
+  // boot catch at the bottom of the file was even registered, so the
+  // script never finished evaluating and the user's tab froze with
+  // "out of memory" exceptions. We use `let` (not `const`) so the
+  // inner block can assign the public surface; the binding itself
+  // is set once and never reassigned at runtime.
+  let _dm = null;
   // ---------------------------------------------------------------------
   if (typeof __pristineFetch__ !== "undefined") {
     let _dm_installed = false;
@@ -12452,37 +12466,42 @@
     });
     // Public surface (attached later when YTPlus is built; we just stash
     // the refs so the registration step can find them).
-    try {
-      // eslint-disable-next-line no-var
-      _dm = {
-        refresh: _dm_refresh,
-        stats: () => Object.assign({}, _dm_stats),
-        shouldDrop: (u) => {
-          const cfg = _dm_activeConfig();
-          return cfg ? _dm_shouldDrop(u, cfg) : false;
-        },
-        endpoints: () => ({
-          stats: [
-            "/api/stats/watchtime",
-            "/api/stats/playback",
-            "/api/stats/qoe",
-            "/api/stats/ads",
-            "/api/stats/att_get",
-          ],
-          logEvent: ["/youtubei/v1/log_event"],
-          pagead: [
-            "/pagead/*",
-            "/ptracking",
-            "/get_midroll_info",
-            "/generate_204",
-            "googleads.g.doubleclick.net/pagead/*",
-          ],
-          heartbeat: ["/s/player/heartbeat", "/youtubei/v1/heartbeat*"],
-        }),
-      };
-    } catch (e) {
-      m("dm init", e);
-    }
+    //
+    // v3.0.18.4 fix: the v3.0.16 original used `var _dm = { ... }` per
+    // the `// eslint-disable-next-line no-var` comment, but the `var`
+    // keyword was missing — making it a bare assignment under strict
+    // mode and throwing `ReferenceError: assignment to undeclared
+    // variable _dm` on every page load. We use `_dm = { ... }` (no
+    // `const`/`let`) here because the binding is declared at the outer
+    // IIFE scope, just above this `if` block, so the assignment is
+    // valid under strict mode. The binding is set once and never
+    // reassigned at runtime; only its properties are read.
+    _dm = {
+      refresh: _dm_refresh,
+      stats: () => Object.assign({}, _dm_stats),
+      shouldDrop: (u) => {
+        const cfg = _dm_activeConfig();
+        return cfg ? _dm_shouldDrop(u, cfg) : false;
+      },
+      endpoints: () => ({
+        stats: [
+          "/api/stats/watchtime",
+          "/api/stats/playback",
+          "/api/stats/qoe",
+          "/api/stats/ads",
+          "/api/stats/att_get",
+        ],
+        logEvent: ["/youtubei/v1/log_event"],
+        pagead: [
+          "/pagead/*",
+          "/ptracking",
+          "/get_midroll_info",
+          "/generate_204",
+          "googleads.g.doubleclick.net/pagead/*",
+        ],
+        heartbeat: ["/s/player/heartbeat", "/youtubei/v1/heartbeat*"],
+      }),
+    };
     // Auto-refresh the active flag when the master toggle changes, so
     // flipping it in the dashboard takes effect on the very next
     // request without a reload.

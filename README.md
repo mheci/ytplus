@@ -15,6 +15,10 @@
 
 ---
 
+## What's new in v3.0.18.4
+
+- **Critical freeze fix** — v3.0.18.3 had a fresh `ReferenceError: assignment to undeclared variable _dm` on every page load. The data-minimization IIFE that lives at the top of the script (introduced in v3.0.16) had a bare `_dm = { … }` assignment under the outer IIFE's strict mode — same class of bug as the v3.0.18.2 `_dm_active` fix, but one level out. The throw fired in the synchronous part of the IIFE, before the async boot catch at the bottom of the file was even registered, so the script never finished evaluating. In Firefox the resulting partial-eval state has been observed to spam "out of memory" exceptions and freeze the tab. The fix declares `_dm` at the outer IIFE scope (`let _dm = null;`) and assigns the public surface inside the data-min block (`_dm = { … }`). The whole v3.0.18.3 memory protection system is still in place — this release just makes the script actually load.
+
 ## What's new in v3.0.18.3
 
 - **Memory protection system** — a new `YTPlus.memory.*` surface and an internal `_mp` resource manager. Every timer, observer, event listener, blob URL, and DOM node the script owns is now tracked in a single registry; every `dispose()` is idempotent (double-free safe); a `FinalizationRegistry` + `WeakRef` safety net recovers anything the script forgot to release; the maintenance tick evicts the oldest 25% of every bounded LRU on a fixed schedule and trims the JSHeap (Chromium) when usage exceeds 80% of the limit. Public API:
@@ -461,7 +465,10 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.18.3 *(current)*
+### v3.0.18.4 *(current)*
+- CRITICAL freeze fix: the data-minimization IIFE's outer `_dm = { ... }` was a bare assignment under the outer IIFE's strict mode, throwing `ReferenceError: assignment to undeclared variable _dm` on every page load. Same class of bug as the v3.0.18.2 `_dm_active` fix but one level out (the outer IIFE, not the inner `_dm_refresh` function). The throw fired during the synchronous IIFE evaluation, before the async boot catch at the bottom of the file was registered, so the script never finished loading and the tab could freeze with "out of memory" spam. Fix: hoist `_dm` to the outer IIFE scope as `let _dm = null;` and assign the public surface inside the data-min block. The v3.0.18.3 memory protection system is still in place — this release makes the script actually load.
+
+### v3.0.18.3
 - New `YTPlus.memory.*` surface + internal `_mp` resource manager
 - Centralized tracking of every timer, observer, event listener, blob URL, and DOM node
 - `dispose()` is idempotent (double-free safe) and counted

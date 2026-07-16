@@ -4,7 +4,7 @@
 
 **Make YouTube yours.** A single userscript that fixes the ads, kills the clutter, kills the telemetry, themes the site, captures screenshots, skips sponsors, remembers where you stopped, and gives you back the keyboard.
 
-[![Version](https://img.shields.io/badge/version-3.0.16-ff3d7f)](#whats-new)
+[![Version](https://img.shields.io/badge/version-3.0.17-ff3d7f)](#whats-new)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Greasy Fork compatible](https://img.shields.io/badge/greasyfork-compatible-success)](https://greasyfork.org)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](yt+.user.js)
@@ -12,6 +12,14 @@
 **[Add to your browser →](https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js)**
 
 </div>
+
+---
+
+## What's new in v3.0.17
+
+- **Update banner now installs with one click** — clicking the "YT+ vX.Y.Z available" toast (or banner) now opens the `user.js` file directly, so a single click downloads and installs the new version. Previously it opened the lightweight `meta.js`, which required the userscript manager to then fetch the actual `user.js` separately. The `@updateURL` header still points at `meta.js` for the background update-poll, so the cheap-file win on polls is preserved; the change only affects the manual click path.
+
+For everything that came before this, see the [release history](#release-history).
 
 ---
 
@@ -315,7 +323,11 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.16 *(current)*
+### v3.0.17 *(current)*
+- Update banner / toast now opens `yt+.user.js` (not `yt+.meta.js`) on click, so the "YT+ vX.Y.Z available" toast is a single-click install. The `@updateURL` header still points at the cheap `meta.js` for background polls.
+- New `LICENSE` file in the repo (GPL-3.0-or-later) — `@license` header was already there but the actual file was missing. Now downloadable alongside the userscript.
+
+### v3.0.16
 - **Data minimization** — master toggle + 4 sub-toggles; outer wrapper on fetch / XHR / sendBeacon; live counter; `YTPlus.dataMin` API; 33-test suite
 - SponsorBlock chapter rules and color override exposed (logic finalized)
 - Documentation pass for the dashboard

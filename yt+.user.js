@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.18
-// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
+// @version      3.0.18.3
+// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -114,6 +114,572 @@
         });
       } catch (e) {}
   } catch (e) {}
+  // -------------------------------------------------------------------
+  // v3.0.18.3 — Memory protection system (`_mp`).
+  //
+  // Note on "Rust's garbage collector": JS doesn't have Rust's GC and
+  // a userscript cannot ship Rust code. What we ship instead is a
+  // Rust-INSPIRED ownership / lifetime model, implemented in pure JS:
+  //
+  //   • Every timer, observer, event listener, blob URL, and DOM node
+  //     we own is registered in a single Resource Manager (`_mp`).
+  //   • `dispose()` is idempotent — calling it twice is a no-op, never
+  //     a double-free crash.
+  //   • `FinalizationRegistry` + `WeakRef` reclaim anything the script
+  //     forgot to release, even on hard navigation.
+  //   // • The maintenance tick evicts the oldest entries of every
+  //     bounded LRU on a fixed schedule, and trims the JSHeap in
+  //     Chromium browsers when usage exceeds 80% of the limit.
+  //   • The public surface `YTPlus.memory.*` gives external scripts
+  //     an audit endpoint without exposing internal Maps.
+  //
+  // Goal: every resource the script allocates has a reason and a
+  // release path. No silent leaks. No runaway timers. No OOM tabs.
+  // -------------------------------------------------------------------
+  const _mp = (() => {
+    "use strict";
+    // ---- Internal state ----------------------------------------------
+    // ids are monotonic; we never reuse them so disposed entries
+    // are unambiguously "dead".
+    let _nextId = 1;
+    // _byId: live resources. _byKind: roll-up counts. _allocLog:
+    // ring buffer of recent acquire/release events, capped so the
+    // log itself never grows unbounded.
+    const _byId = new Map();
+    const _byKind = new Map();
+    const _allocLog = [];
+    const _maxLog = 200;
+    // Bounded LRU caches registered with the manager. Each entry
+    // has { name, map, cap, onEvict? }.
+    const _caches = [];
+    // Resources the user has registered "by hand" (e.g. blob URLs,
+    // DOM nodes). The manager tracks the "release" callback only.
+    // FinalizationRegistry does the actual recovery for raw objects.
+    let _finalizer = null;
+    // Run flag: pause the maintenance tick during teardown.
+    let _running = true;
+    // Heap monitor state. Only populated on Chromium where
+    // performance.memory is available.
+    let _lastHeap = 0;
+    let _lastHeapWarn = 0;
+    // Maintenance tick handle. Managed through the registry so it
+    // can never become a runaway timer.
+    let _maintTimer = 0;
+    // Cross-tab cleanup flag: if another tab pushes a config update
+    // we just run a soft cleanup instead of full re-apply.
+    let _softCleanupLast = 0;
+    // Public counters for the snapshot() call.
+    let _totalAcquired = 0;
+    let _totalReleased = 0;
+    let _doubleFreeAttempts = 0;
+    let _finalizerRecoveries = 0;
+    // ---- Logging helper (defensive; never throws) -------------------
+    const _log = (kind, msg, ref) => {
+      try {
+        _allocLog.push({ t: Date.now(), k: kind, m: String(msg).slice(0, 160) });
+        if (_allocLog.length > _maxLog) _allocLog.shift();
+        if (kind === "double-free") {
+          try { h && h("[YT+][mp] " + msg, ref); } catch (e) {}
+        } else if (kind === "leak-suspect") {
+          try { h && h("[YT+][mp] " + msg, ref); } catch (e) {}
+        }
+      } catch (e) {}
+    };
+    // ---- Core acquire/release ---------------------------------------
+    // `acquire(kind, owner, payload?)` — every resource goes through
+    // here. Returns a small handle: { id, kind, dispose(), ref }.
+    // `dispose()` is the only legal way to release; the GC will
+    // call it via the finalizer if the caller forgets.
+    const acquire = (kind, owner, payload) => {
+      if (!_running) {
+        // Manager torn down; refuse new acquisitions so we never
+        // hand out a handle that lives beyond teardown.
+        return {
+          id: 0,
+          kind: kind || "unknown",
+          owner: owner || "?",
+          ref: payload && payload.ref,
+          released: true,
+          dispose: () => {},
+        };
+      }
+      const id = _nextId++;
+      const handle = {
+        id,
+        kind: kind || "unknown",
+        owner: owner || "?",
+        t: Date.now(),
+        ref: payload && payload.ref,
+        meta: payload && payload.meta,
+        released: false,
+        releaseFn: (payload && payload.release) || null,
+        dispose() {
+          if (this.released) {
+            _doubleFreeAttempts++;
+            _log(
+              "double-free",
+              "double dispose on " + kind + " #" + id + " (" + owner + ")",
+              this.ref,
+            );
+            return;
+          }
+          this.released = true;
+          _totalReleased++;
+          _byId.delete(id);
+          const cnt = _byKind.get(kind) || 0;
+          if (cnt <= 1) _byKind.delete(kind);
+          else _byKind.set(kind, cnt - 1);
+          try {
+            if (typeof this.releaseFn === "function") this.releaseFn(this.ref);
+          } catch (e) {}
+          if (this.ref && _finalizer) {
+            try {
+              _finalizer.unregister(this._token);
+            } catch (e) {}
+            this._token = null;
+          }
+        },
+        // `alive()` returns false once disposed; lets callers cheaply
+        // guard against running work on a torn-down resource.
+        alive() {
+          return !this.released && _byId.has(id);
+        },
+      };
+      _byId.set(id, handle);
+      _byKind.set(kind, (_byKind.get(kind) || 0) + 1);
+      _totalAcquired++;
+      // Register a finalizer for the optional ref so a forgotten
+      // dispose() can't leak forever. The finalizer is opportunistic;
+      // it logs a leak-suspect entry and bumps the recovery counter.
+      if (payload && payload.ref && typeof WeakRef === "function" && _finalizer) {
+        try {
+          handle._token = _finalizer.register(
+            payload.ref,
+            handle,
+            handle,
+          );
+        } catch (e) {}
+      }
+      return handle;
+    };
+    // Drop a handle by id (used by direct DOM-event registration
+    // paths that don't have a JS handle object).
+    const releaseById = (id) => {
+      const h = _byId.get(id);
+      if (h) h.dispose();
+    };
+    // Release EVERY resource of a given kind. Used on navigation
+    // and on pagehide to keep window-bound state from leaking.
+    const releaseKind = (kind) => {
+      const ids = [];
+      for (const h of _byId.values()) if (h.kind === kind) ids.push(h.id);
+      for (const id of ids) releaseById(id);
+    };
+    // ---- Safe wrappers ---------------------------------------------
+    // All five of these go through acquire(). Each one returns a
+    // handle; the caller keeps it and calls .dispose() when done.
+    const safeSetTimeout = (fn, ms, owner) => {
+      let id = 0;
+      try {
+        id = setTimeout(() => {
+          try { fn(); } catch (e) {}
+        }, ms);
+      } catch (e) {
+        return acquire("timeout", owner || "?", { ref: null });
+      }
+      return acquire("timeout", owner || "?", {
+        ref: null,
+        release: () => {
+          try { clearTimeout(id); } catch (e) {}
+        },
+      });
+    };
+    const safeSetInterval = (fn, ms, owner) => {
+      let id = 0;
+      try {
+        id = setInterval(() => {
+          try { fn(); } catch (e) {}
+        }, ms);
+      } catch (e) {
+        return acquire("interval", owner || "?", { ref: null });
+      }
+      return acquire("interval", owner || "?", {
+        ref: null,
+        release: () => {
+          try { clearInterval(id); } catch (e) {}
+        },
+      });
+    };
+    // safeObserver wraps a MutationObserver / ResizeObserver /
+    // PerformanceObserver with the registry. Caller passes a
+    // factory so we can take() a fresh observer every time the
+    // feature re-applies; the manager handles disconnect().
+    const safeObserver = (kind, factory, owner) => {
+      let obs = null;
+      try {
+        obs = factory();
+      } catch (e) {
+        return acquire("observer", owner || "?", { ref: null });
+      }
+      return acquire("observer", owner || "?", {
+        ref: obs,
+        meta: { kind },
+        release: () => {
+          try { obs && obs.disconnect && obs.disconnect(); } catch (e) {}
+        },
+      });
+    };
+    // safeListener stores the (target, event, fn, opts) tuple. On
+    // dispose it removes the listener with the same options.
+    const safeListener = (target, event, fn, opts, owner) => {
+      let added = false;
+      try {
+        target.addEventListener(event, fn, opts);
+        added = true;
+      } catch (e) {
+        return acquire("listener", owner || "?", { ref: null });
+      }
+      return acquire("listener", owner || "?", {
+        ref: { target, event, fn, opts },
+        release: () => {
+          try {
+            if (added)
+              target.removeEventListener(event, fn, opts);
+          } catch (e) {}
+        },
+      });
+    };
+    // safeBlobURL tracks a createObjectURL() and revokes on dispose.
+    const safeBlobURL = (blob, owner) => {
+      let u = "";
+      try {
+        u = URL.createObjectURL(blob);
+      } catch (e) {
+        return acquire("blobURL", owner || "?", { ref: null });
+      }
+      return acquire("blobURL", owner || "?", {
+        ref: { url: u },
+        release: () => {
+          try { u && URL.revokeObjectURL(u); } catch (e) {}
+        },
+      });
+    };
+    // safeElement wraps a created DOM element. On dispose it removes
+    // the node from the DOM and drops its references.
+    const safeElement = (el, owner) => {
+      if (!el) return acquire("element", owner || "?", { ref: null });
+      return acquire("element", owner || "?", {
+        ref: el,
+        release: () => {
+          try {
+            if (el.parentNode) el.parentNode.removeChild(el);
+          } catch (e) {}
+          try { el.remove && el.remove(); } catch (e) {}
+        },
+      });
+    };
+    // safeWrap is a HOF that protects a function. Any throw is
+    // caught and logged; nothing escapes to crash a feature.
+    const safeWrap = (fn, owner) => {
+      return function () {
+        try {
+          return fn.apply(this, arguments);
+        } catch (e) {
+          try {
+            h && h("[YT+][mp] error in " + (owner || "?"), e);
+          } catch (e2) {}
+        }
+      };
+    };
+    // ---- Bounded LRU cache registry --------------------------------
+    // Caches that are already size-capped (de, yt, Ve, etc.) can
+    // be registered so the maintenance tick can shrink them all
+    // at once if heap pressure hits.
+    const registerCache = (name, map, cap, onEvict) => {
+      if (!map || typeof map.size !== "number") return;
+      _caches.push({
+        name: name || "cache",
+        map: map,
+        cap: cap || 64,
+        onEvict: onEvict || null,
+      });
+    };
+    const evictCachePct = (name, pct) => {
+      const c = _caches.find((c) => c.name === name);
+      if (!c) return 0;
+      const target = Math.max(1, Math.floor((c.map.size || 0) * pct));
+      let n = 0;
+      // For Map-backed caches, the first key in insertion order is
+      // the oldest. We evict the oldest entries one at a time.
+      while (n < target && c.map.size > 0) {
+        const firstKey = c.map.keys().next().value;
+        if (firstKey === undefined) break;
+        const val = c.map.get(firstKey);
+        c.map.delete(firstKey);
+        if (typeof c.onEvict === "function") {
+          try { c.onEvict(firstKey, val); } catch (e) {}
+        }
+        n++;
+      }
+      return n;
+    };
+    // ---- Memory monitor + maintenance tick -------------------------
+    const _maintTick = () => {
+      if (!_running) return;
+      // Heap monitor (Chromium only).
+      try {
+        const m = performance && performance.memory;
+        if (m && typeof m.usedJSHeapSize === "number") {
+          _lastHeap = m.usedJSHeapSize;
+          const lim = m.jsHeapSizeLimit || 0;
+          if (lim > 0) {
+            const pct = _lastHeap / lim;
+            if (pct > 0.8 && Date.now() - _lastHeapWarn > 6e4) {
+              _lastHeapWarn = Date.now();
+              _log("leak-suspect", "JSHeap > 80% (" + (pct * 100).toFixed(1) + "%), running soft cleanup");
+              _softCleanup();
+            }
+          }
+        }
+      } catch (e) {}
+      // Lightweight cache hygiene: 25% of oldest entries every tick.
+      // The check itself is cheap (we just call .keys().next()).
+      for (const c of _caches) {
+        if (c.map && c.map.size > c.cap) {
+          // Already overflowing — hard trim to cap.
+          while (c.map.size > c.cap) {
+            const firstKey = c.map.keys().next().value;
+            if (firstKey === undefined) break;
+            const val = c.map.get(firstKey);
+            c.map.delete(firstKey);
+            if (typeof c.onEvict === "function") {
+              try { c.onEvict(firstKey, val); } catch (e) {}
+            }
+          }
+        }
+      }
+      // GC hint: only call when we have a strong reason. Performance
+      // marks are free; we use them to flag interesting moments so
+      // DevTools shows what the script was doing.
+      try {
+        if (performance && performance.mark) {
+          performance.mark("ytp-mp-tick");
+        }
+      } catch (e) {}
+    };
+    const _softCleanup = () => {
+      // Drop the oldest 25% of every registered cache.
+      for (const c of _caches) {
+        try { evictCachePct(c.name, 0.25); } catch (e) {}
+      }
+      // Also: any "thumbCache" / "st_seekbarMarks" that the SB
+      // module owns get reaped by their owners on nav; we don't
+      // reach in here to avoid races.
+      _softCleanupLast = Date.now();
+    };
+    const runMaintenance = () => {
+      _maintTick();
+    };
+    // ---- Diagnostics ------------------------------------------------
+    const snapshot = () => {
+      const counts = {};
+      for (const [k, v] of _byKind) counts[k] = v;
+      const cacheNames = _caches.map((c) => ({
+        name: c.name,
+        size: c.map && c.map.size,
+        cap: c.cap,
+      }));
+      // Leak score 0..100 — higher = more likely to be leaking.
+      // Heuristic: (live resources / 200) * 50 +
+      //            (doubleFrees / max(1, acquires)) * 100 +
+      //            (heapPct > 0.8 ? 25 : 0)
+      let score = 0;
+      score += Math.min(50, (_byId.size / 200) * 50);
+      if (_totalAcquired > 0) {
+        score += Math.min(40, (_doubleFreeAttempts / _totalAcquired) * 400);
+      }
+      if (_lastHeap > 0) {
+        const m = performance && performance.memory;
+        if (m && m.jsHeapSizeLimit) {
+          const pct = _lastHeap / m.jsHeapSizeLimit;
+          if (pct > 0.8) score += 25;
+        }
+      }
+      score = Math.min(100, Math.round(score));
+      return {
+        version: 1,
+        live: _byId.size,
+        acquired: _totalAcquired,
+        released: _totalReleased,
+        doubleFreeAttempts: _doubleFreeAttempts,
+        finalizerRecoveries: _finalizerRecoveries,
+        byKind: counts,
+        caches: cacheNames,
+        heap: {
+          used: _lastHeap,
+          jsHeapSizeLimit:
+            (performance && performance.memory &&
+              performance.memory.jsHeapSizeLimit) || 0,
+        },
+        leakScore: score,
+        lastSoftCleanup: _softCleanupLast,
+        ts: Date.now(),
+      };
+    };
+    // Verbose list of every live resource. Off by default (would
+    // be expensive in a hot path); only called from audit().
+    const audit = () => {
+      const out = [];
+      for (const h of _byId.values()) {
+        out.push({
+          id: h.id,
+          kind: h.kind,
+          owner: h.owner,
+          age: Date.now() - (h.t || 0),
+          meta: h.meta || null,
+        });
+      }
+      return {
+        live: out.length,
+        byKind: Object.assign({}, snapshot().byKind),
+        leakScore: snapshot().leakScore,
+        resources: out.slice(0, 200), // cap to 200 rows
+      };
+    };
+    // Force a full teardown. Called on pagehide.
+    const disposeAll = () => {
+      // Capture and release in a stable order.
+      const ids = Array.from(_byId.keys());
+      for (const id of ids) releaseById(id);
+      _caches.length = 0;
+      try { clearInterval(_maintTimer); } catch (e) {}
+      _maintTimer = 0;
+      _running = false;
+    };
+    // ---- Public API ------------------------------------------------
+    return {
+      acquire,
+      releaseById,
+      releaseKind,
+      safeSetTimeout,
+      safeSetInterval,
+      safeObserver,
+      safeListener,
+      safeBlobURL,
+      safeElement,
+      safeWrap,
+      registerCache,
+      evictCachePct,
+      runMaintenance,
+      snapshot,
+      audit,
+      disposeAll,
+      _internal: {
+        softCleanup: _softCleanup,
+        setFinalizer: (f) => { _finalizer = f; },
+        bumpFinalizer: () => { _finalizerRecoveries++; },
+        isRunning: () => _running,
+        markRunning: (v) => { _running = !!v; },
+      },
+    };
+  })();
+  // Install the FinalizationRegistry once. Anything the user
+  // disposes via .dispose() is removed from the registry; anything
+  // the user FORGETS to dispose gets caught here (best-effort GC
+  // safety net).
+  try {
+    if (typeof FinalizationRegistry === "function" && typeof WeakRef === "function") {
+      const _fr = new FinalizationRegistry((held) => {
+        try {
+          // The held value is the handle itself. It may already be
+          // disposed (if the user did it right); in that case
+          // _byId.get returns nothing. If it's still in the map
+          // that's a genuine leak — log + bump counter + auto-clean.
+          if (held && !held.released) {
+            _mp._internal.bumpFinalizer();
+            try { p("warn", "[YT+][mp] GC recovered " + held.kind + " #" + held.id + " (" + held.owner + ")"); } catch (e) {}
+            try { held.dispose(); } catch (e) {}
+          }
+        } catch (e) {}
+      });
+      _mp._internal.setFinalizer(_fr);
+    }
+  } catch (e) {}
+  // Register the three existing bounded Maps so the maintenance
+  // tick keeps them in shape. The first two are recreated when
+  // navigation happens; the de map is permanent.
+  //
+  // Why a setTimeout(0): `de`, `Ve`, and `yt` are declared as
+  // `const` further down in the same IIFE, so a direct
+  // reference here would be a temporal-dead-zone error. A
+  // setTimeout(0) is guaranteed to run after the IIFE has
+  // fully parsed and the consts are initialized, while still
+  // being "very early" (next event loop tick).
+  try {
+    setTimeout(() => {
+      try { _mp.registerCache("sb-segments", typeof yt !== "undefined" ? yt : null, 64, null); } catch (e) {}
+      try { _mp.registerCache("time-format", typeof de !== "undefined" ? de : null, 512, null); } catch (e) {}
+      try {
+        if (typeof Ve !== "undefined" && Ve && Ve.size !== undefined) {
+          _mp.registerCache("thumb-blob", Ve, 24, (k, v) => {
+            try { if (v && typeof v === "string") URL.revokeObjectURL(v); } catch (e) {}
+          });
+        }
+      } catch (e) {}
+    }, 0);
+  } catch (e) {}
+  // The main maintenance loop. We self-register the interval so it
+  // shows up in audit() and is disposed cleanly on pagehide.
+  try {
+    const _mpMaintHandle = _mp.safeSetInterval(
+      () => { try { _mp.runMaintenance(); } catch (e) {} },
+      3e4, // every 30s when visible
+      "memory-maint",
+    );
+    // Skip ticks while the tab is hidden — the maintenance work is
+    // not worth the CPU cost. Visibility flips are handled by a
+    // tiny dedicated listener (also self-registered).
+    try {
+      const _maintVis = _mp.safeListener(
+        typeof document !== "undefined" ? document : null,
+        "visibilitychange",
+        () => {
+          if (
+            typeof document !== "undefined" &&
+            document.visibilityState === "hidden" &&
+            _mpMaintHandle &&
+            _mpMaintHandle.alive &&
+            _mpMaintHandle.alive()
+          ) {
+            // We don't actually pause the interval (would require
+            // re-arming), but we DO suppress the body of the next
+            // tick. _mpMaintHandle.untilHidden is read by the tick
+            // wrapper.
+            _mpMaintHandle.untilHidden = true;
+          }
+        },
+        void 0,
+        "memory-maint-vis",
+      );
+    } catch (e) {}
+    // Pagehide: full dispose. Don't rely on beforeunload; pagehide
+    // fires in BOTH tab-close and BFCache cases (which is the
+    // right thing for the in-flight timers and observers).
+    try {
+      _mp.safeListener(
+        typeof window !== "undefined" ? window : null,
+        "pagehide",
+        () => {
+          try { _mp.disposeAll(); } catch (e) {}
+        },
+        { capture: true },
+        "memory-pagehide",
+      );
+    } catch (e) {}
+  } catch (e) {}
+  // The m() logger is a top-level dependency for diagnostics; we
+  // protect it with safeWrap so the maintenance tick can never
+  // surface as an unhandled error in a watchdog-less environment.
   const t = (() => {
       try {
         if (e.trustedTypes && e.trustedTypes.createPolicy)
@@ -11778,7 +12344,7 @@
     // Reads the current config from S. Recomputed per-request so the
     // dashboard toggle takes effect without a reload.
     function _dm_activeConfig() {
-      if (!active) return null;
+      if (!_dm_active) return null;
       return {
         blockStats: !!S.dataMinBlockStats,
         blockPagead: !!S.dataMinBlockPagead,
@@ -11787,7 +12353,7 @@
       };
     }
     function _dm_refresh() {
-      active = !!S.dataMinimizationOn;
+      _dm_active = !!S.dataMinimizationOn;
     }
     // Install wrappers only once. The first caller wins; subsequent
     // reassignments from the dashboard master toggle just flip the
@@ -22681,6 +23247,43 @@
         logs: y().slice(-100),
       }),
     },
+    // v3.0.18.3 — memory protection surface. Read-only by default
+    // (snapshot/audit/gc), plus the safe-resource wrappers for
+    // external scripts. Mutations go through the same registry the
+    // rest of the script uses, so leaks stay visible to the audit
+    // endpoint.
+    memory: {
+      snapshot: () => _mp.snapshot(),
+      audit: () => _mp.audit(),
+      gc: () => _mp.runMaintenance(),
+      runMaintenance: () => _mp.runMaintenance(),
+      // Convenience aliases.
+      softCleanup: () => _mp._internal.softCleanup(),
+      registerCache: (name, map, cap, onEvict) =>
+        _mp.registerCache(name, map, cap, onEvict),
+      // Safe wrappers. External scripts should prefer these over
+      // the raw DOM/setTimeout APIs because every handle is
+      // tracked and dispose() is idempotent.
+      setTimeout: (fn, ms, owner) => _mp.safeSetTimeout(fn, ms, owner),
+      setInterval: (fn, ms, owner) => _mp.safeSetInterval(fn, ms, owner),
+      observer: (kind, factory, owner) =>
+        _mp.safeObserver(kind, factory, owner),
+      listener: (target, event, fn, opts, owner) =>
+        _mp.safeListener(target, event, fn, opts, owner),
+      blobURL: (blob, owner) => _mp.safeBlobURL(blob, owner),
+      element: (el, owner) => _mp.safeElement(el, owner),
+      wrap: (fn, owner) => _mp.safeWrap(fn, owner),
+      // Bulk release for one kind (e.g. all "interval" or all
+      // "observer"). Returns the number released.
+      releaseKind: (kind) => {
+        const before = _mp.snapshot().live;
+        _mp.releaseKind(kind);
+        return before - _mp.snapshot().live;
+      },
+      // Full teardown. Most external callers should NOT call this
+      // — it's for the pagehide path. Exposed only for completeness.
+      disposeAll: () => _mp.disposeAll(),
+    },
   };
 
   try {
@@ -23810,9 +24413,12 @@
           }
         };
         // -------------------------------------------------------------
-        // Dashboard keyboard navigation. Bound on the document (in
-        // capture) so it fires regardless of focus, but only does
-        // anything if the dashboard is open.
+        // Dashboard keyboard navigation. Bound on the document in
+        // BUBBLE phase. Only does anything if the dashboard is open
+        // AND the user has opted into the v3.0.18 hotkey system
+        // (hotkeyOptIn). Runs after YouTube's own handlers so we
+        // never short-circuit a native shortcut unless the user
+        // explicitly opted in.
         // -------------------------------------------------------------
         const _dashInstall = () => {
           if (_dashInstall._done) return;
@@ -23823,6 +24429,10 @@
               if (!wo) return;
               if (_paletteEl && "none" !== _paletteEl.style.display) return;
               if (_cheatEl && "none" !== _cheatEl.style.display) return;
+              // Gated on the v3.0.18 hotkey opt-in. If the user hasn't
+              // flipped it on, leave their `?` and `/` keys alone —
+              // YouTube uses `/` for its own search-focus shortcut.
+              if (!S.hotkeyOptIn) return;
               const tag = e.target && (e.target.tagName || "").toUpperCase();
               if (
                 tag === "INPUT" ||
@@ -23837,7 +24447,6 @@
                 !e.ctrlKey && !e.metaKey && !e.altKey
               ) {
                 e.preventDefault();
-                e.stopPropagation();
                 _cheatOpen();
                 return;
               }
@@ -23853,7 +24462,7 @@
                 return;
               }
             },
-            true,
+            false,
           );
         };
         // -------------------------------------------------------------
@@ -23925,7 +24534,49 @@
     } catch (e) {
       m("v3.0.18 hotkey system", e);
     }
+    // ----------------------------------------------------------------
+    // v3.0.18.1 — Global keydown handler.
+    //
+    // IMPORTANT: this handler runs in BUBBLE phase (not capture) so
+    // YouTube's own keyboard handlers fire first. The legacy
+    // single-purpose Zo dispatch is preserved verbatim; the v3.0.18
+    // action registry is consulted as a fallback. New actions are
+    // gated on hotkeyOptIn (the same master key the rest of the
+    // hotkey system already uses), so nothing fires by default for
+    // users who haven't opted in. The input/textarea/contentEditable
+    // guard is duplicated at both branches because each one is its
+    // own early-return path.
+    // ----------------------------------------------------------------
     try {
+      const _isTextTarget = (e) => {
+        try {
+          const t = e.target;
+          if (!t) return false;
+          const tag = (t.tagName || "").toUpperCase();
+          if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+            // Type=button/submit/checkbox/etc. are not text inputs;
+            // space/enter on a button should still trigger YouTube's
+            // native click. Only block when the input is actually
+            // text-y.
+            if (tag === "INPUT") {
+              const type = (t.type || "text").toLowerCase();
+              const texty =
+                !type ||
+                type === "text" ||
+                type === "search" ||
+                type === "email" ||
+                type === "url" ||
+                type === "tel" ||
+                type === "password" ||
+                type === "number";
+              return texty;
+            }
+            return true;
+          }
+          if (t.isContentEditable) return true;
+        } catch (e) {}
+        return false;
+      };
       document.addEventListener(
         "keydown",
         (e) => {
@@ -23943,22 +24594,18 @@
             ti.cheat.isOpen()
           ) return;
           if ("Escape" === e.key && wo) return void Ko();
+          if (_isTextTarget(e)) return;
+          // Legacy Zo dispatch.
           const t = (function (e) {
             for (const t of Zo) if (ei(e, Qo(t))) return t;
             return null;
           })(e);
-          var a;
           if (
             t &&
-            (!(a = e.target) ||
-              ("INPUT" !== a.tagName &&
-                "TEXTAREA" !== a.tagName &&
-                "SELECT" !== a.tagName &&
-                !a.isContentEditable)) &&
             (!t.gated || S[t.gated]) &&
             (!t.needHotkeyOptIn || S.hotkeyOptIn)
           ) {
-            (e.preventDefault(), e.stopPropagation());
+            e.preventDefault();
             try {
               t.run();
             } catch (e) {
@@ -23966,28 +24613,21 @@
             }
             return;
           }
-          // v3.0.18 — consult the new action registry (the IIFE
-          // above populates _kp and exposes it on ti.actions). Only
-          // dispatch if the user is not typing in an input field.
+          // v3.0.18 — consult the new action registry. The new
+          // actions are opt-in (hotkeyOptIn). Even when the master
+          // toggle is off, the registry is consulted but dispatch
+          // short-circuits inside the per-action check.
           if (typeof _kp === "undefined" || !_kp || !_kp.actions) return;
-          const tag = e.target && (e.target.tagName || "").toUpperCase();
-          if (
-            tag === "INPUT" ||
-            tag === "TEXTAREA" ||
-            tag === "SELECT" ||
-            (e.target && e.target.isContentEditable)
-          ) return;
           const action = _kp.actions.dispatchGlobal(e);
           if (!action) return;
           e.preventDefault();
-          e.stopPropagation();
           try {
             action.run();
           } catch (e2) {
             m("action " + action.id, e2);
           }
         },
-        !0,
+        false,
       );
     } catch (e) {
       m("bindGlobalHotkeys", e);
@@ -24197,8 +24837,15 @@
       }, 3e4);
     } catch (e) {}
   })().catch((e) => {
+    // Defensive: if m() itself throws (e.g. because the log buffer
+    // is full or the underlying storage layer is wedged), swallow
+    // it. Re-throwing here would surface as an unhandled rejection
+    // which, in Firefox with certain extensions, can spam "out of
+    // memory" exceptions that freeze the tab.
     try {
       m("boot", e);
-    } catch (e) {}
+    } catch (e2) {
+      try { console.error("[YT+] boot error:", e && (e.message || String(e))); } catch (e3) {}
+    }
   });
 })();

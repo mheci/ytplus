@@ -57,7 +57,7 @@ echo "OK"
 # is 0 on success. We list them explicitly so adding a new one to the
 # repo is opt-in (you have to remember to add it to the list).
 echo "=== Tests ==="
-for t in test_sandbox.js test_dashboard.js test_update_check.js test_sb.js test_dm.js test_hotkeys.js; do
+for t in test_sandbox.js test_dashboard.js test_update_check.js test_sb.js test_dm.js test_hotkeys.js test_memory.js; do
   if [ -f "$t" ]; then
     printf "  %-25s " "$t"
     if node "$t" >/tmp/_ytp_test.out 2>&1; then

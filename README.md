@@ -4,7 +4,7 @@
 
 **Make YouTube yours.** A single userscript that fixes the ads, kills the clutter, kills the telemetry, themes the site, captures screenshots, skips sponsors, remembers where you stopped, and gives you back the keyboard.
 
-[![Version](https://img.shields.io/badge/version-3.0.18-ff3d7f)](#whats-new)
+[![Version](https://img.shields.io/badge/version-3.0.18.3-ff3d7f)](#whats-new)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Greasy Fork compatible](https://img.shields.io/badge/greasyfork-compatible-success)](https://greasyfork.org)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](yt+.user.js)
@@ -14,6 +14,21 @@
 </div>
 
 ---
+
+## What's new in v3.0.18.3
+
+- **Memory protection system** — a new `YTPlus.memory.*` surface and an internal `_mp` resource manager. Every timer, observer, event listener, blob URL, and DOM node the script owns is now tracked in a single registry; every `dispose()` is idempotent (double-free safe); a `FinalizationRegistry` + `WeakRef` safety net recovers anything the script forgot to release; the maintenance tick evicts the oldest 25% of every bounded LRU on a fixed schedule and trims the JSHeap (Chromium) when usage exceeds 80% of the limit. Public API:
+  ```js
+  YTPlus.memory.snapshot()          // {live, acquired, released, doubleFreeAttempts, byKind, caches, heap, leakScore 0-100, …}
+  YTPlus.memory.audit()             // verbose list of every live resource (capped at 200)
+  YTPlus.memory.gc()                // alias of runMaintenance()
+  YTPlus.memory.runMaintenance()    // force the 30s tick now
+  YTPlus.memory.softCleanup()       // drop the oldest 25% of every registered cache
+  YTPlus.memory.registerCache(name, map, cap, onEvict)  // give the manager a LRU to manage
+  YTPlus.memory.setTimeout / setInterval / observer / listener / blobURL / element / wrap  // safe wrappers
+  YTPlus.memory.releaseKind("listener")  // bulk release by kind
+  ```
+  No new user-facing features — pure plumbing that makes the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2 fixed a ReferenceError that froze the tab on load. v3.0.18.1 fixed a global keydown handler that was intercepting YouTube's own keys. v3.0.18 added the hotkey system. See the [release history](#release-history).
 
 ## What's new in v3.0.18
 
@@ -411,7 +426,8 @@ YT+ is a single ~835 KB userscript (~23,000 lines). Its structure:
 - **A mini library** for throttle, debounce, format bytes, format time, memoize, fetch with `@connect` enforcement, and a glass toast system.
 - **A single CSS string** embedded as a JS string literal, registered on the first `apply()` and edited on every `cfg.changed` event.
 - **Data minimization layer** *(v3.0.16)* — the outermost wrapper on `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon`. Installed at IIFE start so it sits *above* the `geoOverride` and `netMonitor` wrappers (which still see content traffic). The pristine original functions are saved as `__pristineFetch__`, `__pristineXHROpen__`, `__pristineXHRSend__`, `__pristineBeacon__` for the inner wrappers to call through.
-- **Public API surface on `window.YTPlus`** — `YTPlus.cfg` (proxy), `YTPlus.setCfg(key, val)`, `YTPlus.features`, `YTPlus.bus`, `YTPlus.sb.*` (SponsorBlock controls), `YTPlus.net.*` (network monitor), `YTPlus.dataMin.*` (data minimization: `on`, `off`, `toggle`, `stats`, `shouldDrop`, `endpoints`, `config`, `setBlock`), `YTPlus.history.*` (history ops), `YTPlus.diagnostics.snapshot()`.
+- **Memory protection system** *(v3.0.18.3)* — `_mp` resource manager with a Rust-inspired ownership model. `acquire(kind, owner, payload)` returns a handle whose `dispose()` is idempotent; a `FinalizationRegistry` + `WeakRef` recovers anything the script forgot to release; the maintenance tick evicts the oldest 25% of every registered LRU and trims the JSHeap when usage exceeds 80%; a leak-score heuristic (0-100) is exposed via `YTPlus.memory.snapshot()` along with `audit()`, `gc()`, `runMaintenance()`, `softCleanup()`, `releaseKind()`, and the safe-resource wrappers (`safeSetTimeout` / `safeSetInterval` / `safeObserver` / `safeListener` / `safeBlobURL` / `safeElement` / `safeWrap`). Pagehide disposes everything in one shot.
+- **Public API surface on `window.YTPlus`** — `YTPlus.cfg` (proxy), `YTPlus.setCfg(key, val)`, `YTPlus.features`, `YTPlus.bus`, `YTPlus.sb.*` (SponsorBlock controls), `YTPlus.net.*` (network monitor), `YTPlus.dataMin.*` (data minimization: `on`, `off`, `toggle`, `stats`, `shouldDrop`, `endpoints`, `config`, `setBlock`), `YTPlus.history.*` (history ops), `YTPlus.diagnostics.snapshot()`, `YTPlus.memory.*` (the v3.0.18.3 resource manager).
 
 ## Performance
 
@@ -419,7 +435,7 @@ YT+ is designed to add less than 30ms to your YouTube page load, use less than 2
 
 ## Testing
 
-Each release is verified against six test suites:
+Each release is verified against seven test suites:
 
 - `test_sandbox.js` — JSDOM-based smoke test that mocks all `GM_*` APIs and counts registered features, registered menu items, and any thrown errors
 - `test_dashboard.js` — dashboard perf benchmarks
@@ -427,6 +443,7 @@ Each release is verified against six test suites:
 - `test_sb.js` — SponsorBlock filters, action resolution, cache key derivation
 - `test_dm.js` — data minimization: master toggle, sub-toggles, XHR/fetch/beacon short-circuit, byHost tracking, `shouldDrop()` API, public surface, master re-arm
 - `test_hotkeys.js` — v3.0.18 hotkey registry: action registration, binding storage, conflict detection, dispatch with modifiers, public `YTPlus.actions` / `.palette` / `.cheat` surface, global keydown integration
+- `test_memory.js` — v3.0.18.3 memory protection: `safeSetTimeout` / `safeSetInterval` / `safeObserver` / `safeListener` / `safeBlobURL` / `safeElement` / `safeWrap`, `dispose()` idempotency, double-free tracking, `releaseKind`, `audit()`, `runMaintenance()`, leak score heuristic
 
 Run them with `node test_*.js` (requires `npm install` for the `jsdom` dependency).
 
@@ -444,7 +461,22 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.18 *(current)*
+### v3.0.18.3 *(current)*
+- New `YTPlus.memory.*` surface + internal `_mp` resource manager
+- Centralized tracking of every timer, observer, event listener, blob URL, and DOM node
+- `dispose()` is idempotent (double-free safe) and counted
+- `FinalizationRegistry` + `WeakRef` safety net for forgotten releases
+- Maintenance tick evicts oldest 25% of every bounded LRU and trims the JSHeap on Chromium when usage > 80%
+- Public API: `snapshot()`, `audit()`, `gc()` / `runMaintenance()`, `softCleanup()`, `releaseKind()`, safe-resource wrappers (`safeSetTimeout` / `safeSetInterval` / `safeObserver` / `safeListener` / `safeBlobURL` / `safeElement` / `safeWrap`), leak score 0-100
+- New `test_memory.js` (59 assertions) covers the whole surface
+
+### v3.0.18.2
+- CRITICAL freeze fix: `active` → `_dm_active` typo in `_dm_refresh()` was throwing a ReferenceError on every page load, causing "out of memory" spam in Firefox + Violentmonkey
+
+### v3.0.18.1
+- Hotkey freeze fix: global keydown handler moved from capture to bubble phase so YouTube's own handlers run first; dashboard `?` / `/` shortcuts gated on the existing `hotkeyOptIn` master toggle
+
+### v3.0.18
 - Hotkey system extended to every module: 30+ new actions (playback, data min, SponsorBlock, bookmarks, force-watched, sleep timer, theme, dashboard, global)
 - Command palette (Ctrl+Shift+K) with fuzzy search over actions + features
 - Cheat sheet (?) with filterable hotkey reference

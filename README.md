@@ -15,6 +15,18 @@
 
 ---
 
+## What's new in v3.0.18.6
+
+- **Audit fixes** — five bugs caught during a line-by-line review of all ~25,000 lines:
+  1. The "Import settings from file" Tampermonkey menu command was calling `Mo()` — a button-builder helper, not an import function — so clicking it did nothing useful. Now wires to `Xo()`, the real `<input type="file">` → FileReader → JSON.parse import path.
+  2. The SponsorBlock mute path had `St_perCat[r] = (St_perCat[r] || 0) + 0;` — a no-op, so muted segments never incremented the per-category count and the "saved" time was never accumulated. Mirrors the skip path now: counts the muted segment once via the `it` Set guard, accumulates the saved time, and emits the same HUD rollup.
+  3. `S.ccTextColor` was interpolated raw into the generated caption CSS in two places (the `apply` path and the `cfg.changed` listener). If a user typed an invalid hex (typo, paste of `rgb(...)`, or — worse — a string containing `}` and a new rule), the stylesheet silently broke. Sanitized to a valid `#rgb` or `#rrggbb` before interpolation, falling back to white on parse failure.
+  4. `S.idleDimBlur` had the same class of issue. Clamped to the [1, 20] range the dashboard exposes, falling back to 6 on any non-finite value.
+  5. The update-available banner built its inner HTML with the GitHub release tag interpolated raw via `innerHTML`. Self-XSS only (the tag is maintainer-controlled), but rebuilt with `textContent` / `createTextNode` for defense-in-depth.
+- All 7 test suites pass: `test_sandbox`, `test_dashboard` (12), `test_update_check` (18), `test_sb` (30), `test_dm` (33), `test_hotkeys` (49), `test_memory` (59). **203 total checks.**
+- No new features; pure bug fixes from a line-by-line audit.
+- **Known feature gap (out of scope, documenting here for transparency):** `sbChapterRules` (chapter skip rules per channel) is collected from config and exposed via the public API but the actual application logic is missing — there's no code path that reads `St_chapterRules` to decide whether to skip a chapter segment. The data model also doesn't have a clean way to get chapter titles (SB segments don't have a `title` field, only `description`). Proper implementation would require fetching YouTube's own chapter metadata. Filed for a future release.
+
 ## What's new in v3.0.18.5
 
 - **SponsorBlock privacy-mode fix** — since v3.0.14 (over a year) the SB post-fetch lookup searched the response for `p.hash === hash`, but the SponsorBlock server actually returns `{videoID, segments}` entries — the `hash` field never existed. Privacy mode (default ON) silently returned zero segments for every video because the lookup never matched, even when the server's response had the data. This was masked through v3.0.18.3 because that release crashed with a `_dm` ReferenceError before SB ever ran, so the broken fetch never had a chance to fail visibly. v3.0.18.4 fixed the script load issue, which surfaced this latent SB regression: the script now loaded, but SB was still broken. Fix: look up the response by `p.videoID === e` (the videoId passed into the fetcher). One-line change; non-privacy mode was unaffected, so anyone who already turned off `sbPrivacy` was working fine. v3.0.18.4 (one-liner `_dm` ReferenceError fix) is still included and necessary; v3.0.18.5 is the additional one-line fix that makes SB actually work.
@@ -469,7 +481,11 @@ If you find a bug, please open an issue with:
 
 ## Release history
 
-### v3.0.18.5 *(current)*
+### v3.0.18.6 *(current)*
+- Audit fixes: "Import settings" menu command now wires to `Xo()` (the real import); SB mute path now counts and accumulates time; `ccTextColor` and `idleDimBlur` are sanitized before CSS interpolation; update banner rebuilt with `textContent`. Five bugs in total, all from a line-by-line review. All 7 test suites pass.
+- Known feature gap: `sbChapterRules` (chapter skip rules per channel) is collected but never applied — out of scope for this release.
+
+### v3.0.18.5
 - SponsorBlock privacy-mode fix: since v3.0.14 the SB post-fetch lookup searched the response for `p.hash === hash`, but the SB API actually returns `{videoID, segments}` entries — the `hash` field never existed on response entries. With `sbPrivacy: true` (the default) every fetch returned zero segments even when the server had data, because the lookup never matched. Latent since v3.0.14, surfaced only after v3.0.18.4 fixed the script load issue. Fix: look up by `p.videoID === e` (the videoId passed into the fetcher). One-line change. Non-privacy mode was unaffected. v3.0.18.4's `_dm` ReferenceError fix is still required; v3.0.18.5 stacks on top of it.
 
 ### v3.0.18.4

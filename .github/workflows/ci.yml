@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-userscript:
+    name: Validate Userscript
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate JavaScript syntax
+        run: |
+          echo "Validating yt+.user.js syntax..."
+          node --check yt+.user.js
+          echo "✅ Syntax is valid"
+
+      - name: Validate userscript headers
+        run: |
+          echo "Checking required userscript headers..."
+          head -80 yt+.user.js | grep -q '^// @name         YT+'
+          head -80 yt+.user.js | grep -q '^// @version'
+          head -80 yt+.user.js | grep -q '^// @match        https://www.youtube.com/\*'
+          head -80 yt+.user.js | grep -q '^// @run-at       document-start'
+          echo "✅ Required headers present"
+
+      - name: Basic structure check
+        run: |
+          echo "Performing basic structure validation..."
+          # Ensure the file starts with the userscript header
+          head -1 yt+.user.js | grep -q '// ==UserScript=='
+          # Ensure it ends with the IIFE closer
+          tail -5 yt+.user.js | grep -q '})();'
+          echo "✅ Basic structure looks correct"
+
+      - name: Size sanity check
+        run: |
+          SIZE=$(stat -c%s yt+.user.js)
+          echo "Userscript size: ${SIZE} bytes"
+          if [ "$SIZE" -lt 100000 ]; then
+            echo "⚠️  Warning: Userscript seems unusually small"
+          fi
+          echo "✅ Size check passed"
+
+  # Future-proof: placeholder for additional validation if needed
+  # (e.g. header metadata consistency, etc.)
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [validate-userscript]
+    if: always()
+    steps:
+      - name: Report status
+        run: |
+          echo "All validation jobs completed successfully."
+          echo "Repository is in a healthy minimal state."

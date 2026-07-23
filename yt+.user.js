@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.19.0
-// @description  YT+ makes your YouTube experience smoother, cleaner, and more enjoyable. Customize your visual themes, hide sections you don't want to see, keep track of finished videos, create your own keyboard shortcuts, and automatically skip sponsorship segments. v3.0.18.10: "Force video as watched" hotkey now also fires the per-video playbackTracking URLs (the same ones the channel-wide version uses) so the press reliably registers in YouTube Account History. The legacy hardcoded /api/stats/* and InnerTube endpoints are kept as a belt-and-suspenders fallback. Two new config flags split the press into "Mark in Account History" + "Save to local YT+ history" (both default ON), mirroring the channel version. Toast feedback confirms the press. All 8 test suites pass (241 checks; new test_force_watched.js with 23 checks drives Ut() in jsdom and asserts the playbackTracking URLs are fired). v3.0.18.9: "Check for updates" entry improvements. The "up to date" toast is now clickable to open the GitHub releases page so users can read per-version changelogs; the "check failed" toast is now clickable to retry; the cache timestamp is now written only on successful response (so a single network blip no longer suppresses the next 10 minutes of auto-checks); the GitHub URLs are defined once as module-scope constants; the `Fu` parameter is now named `force` instead of shadowing the outer `e` (unsafeWindow). All 7 test suites pass (218 checks). v3.0.18.8: Audit fixes from a third, integrated pass. (1) Bookmark duplicate-id data loss: pressing B twice at the same video position silently overwrote the first bookmark because the id `videoId + "_" + position` collided. The id now includes `Date.now()`. (2) Hotkey re-capture lifecycle refactored: the v3.0.18.7 fix was applied in two of three places that ended a capture; now centralized in a single `_nClear()` helper. The test in test_hotkeys.js actually drives the buttons in jsdom and asserts the listener was removed, not just a source-grep check. (3) Resume overlay thumbnail CSS injection hardening: both overlay thumbnails now use `encodeURI()` for full URL escaping before interpolating into `url(...)`, with the old single-quote escape as a fallback. (4) Dashboard title DOM construction: the `[=] YT+ v<ver>` header now uses `createElement` + `textContent` for consistency with the v3.0.18.6 banner fix. Action registry integrity check added to test_hotkeys.js. All 7 test suites pass (213 checks). v3.0.18.7: Audit fixes from a second, deeper pass. (1) Hotkey re-capture leaked a keydown listener; now removed when a new capture starts. (2) Dashboard search null-dereference on stale data-feat; card hidden silently. v3.0.18.6: Audit fixes — import-from-menu now wires to the real import; SB mute path now counts and accumulates time; ccTextColor and idleDimBlur are sanitized before CSS interpolation; update banner rebuilt with textContent. All 7 test suites pass (203 checks). Known feature gap: `sbChapterRules` (chapter skip rules per channel) is collected but never applied — out of scope for this release. v3.0.18.5: SponsorBlock privacy-mode fix. Since v3.0.14 the SB post-fetch lookup searched the response for `p.hash === hash`, but the SponsorBlock server actually returns `{videoID, segments}` entries — the `hash` field never existed. Privacy mode (default ON) silently returned zero segments for every video because the lookup never matched, even though the server's response had the data. v3.0.18.3 / v3.0.18.4's _dm ReferenceError masked this bug because the whole script crashed before SB ever ran, so it only surfaced once v3.0.18.4 actually loaded. Fix: look up by `p.videoID === e` (the videoId passed into the fetcher). One-line change; no behavior difference for non-privacy mode (which is unaffected). v3.0.18.4: CRITICAL freeze fix. v3.0.18.3 had a ReferenceError in the data-minimization IIFE: the outer `_dm = { ... }` was a bare assignment under strict mode (no `var`/`let`/`const`), which throws "ReferenceError: assignment to undeclared variable _dm" on every page load. The boot catch at the end of the script couldn't save it because the throw happened during the synchronous IIFE evaluation, before the async catch was even registered. The fix is one line — `const _dm = { ... }` — but it makes the entire script load again, including the v3.0.18.3 memory protection system. The inner `_dm_active` typo from v3.0.18.2 was already fixed in v3.0.18.3; v3.0.18.4 closes the same class of bug one level out. v3.0.18.3: Memory protection system. Adds a Rust-inspired ownership / lifetime / dispose model (`YTPlus.memory.*`) — every timer, observer, event listener, blob URL, DOM node, and LRU cache slot is now tracked by a central Resource Manager. `dispose()` is idempotent (double-free safe), `FinalizationRegistry` + `WeakRef` recover anything we missed, the maintenance tick evicts the oldest 25% of every bounded cache on a schedule, and JSHeap usage is monitored (Chromium-only) with auto-recovery when the working set crosses 80%. Every public hotkey and feature has a `safeSetTimeout`/`safeInterval`/`safeObserver` wrapper so uncaught throws cannot spawn runaway timers. `safeElement()` and `safeBlobURL()` guarantee object URLs are revoked. New `safeWrap` HOF protects any function from turning into a memory leak. Diagnostics: `YTPlus.memory.snapshot()` for an at-a-glance audit (heap, caches, resource counts, leak score 0-100), `YTPlus.memory.audit()` for a verbose list of every live handle, `YTPlus.memory.gc()` to force a cleanup, and `YTPlus.memory.runMaintenance()` to manually trigger the 30s tick. No new user-facing features — pure plumbing to make the existing 30+ actions, 120+ features, and 111 timer/observer call-sites deterministic under load. v3.0.18.2: CRITICAL freeze fix. The v3.0.18 data-minimization block referenced an undeclared variable `active` (should have been `_dm_active`) inside `_dm_refresh()`. In strict mode this threw a ReferenceError on every page load, which in turn caused the browser to spam "out of memory" exceptions and freeze the tab. v3.0.18.1: Hotkey freeze fix. The v3.0.18 global keydown handler was bound in capture phase with aggressive preventDefault, which intercepted keys YouTube's own UI uses (K/M/J/L/F/?, /) and could prevent the page from responding. The global keydown handler now runs in BUBBLE phase so YouTube's own handlers run first, and the dashboard `?` / `/` shortcuts are now gated on the existing hotkeyOptIn master toggle (open the dashboard → "Keyboard shortcuts" switch to turn them on). v3.0.18: Hotkeys everywhere + keyboard-friendly dashboard. The hotkey system now covers every module — playback (play/pause, mute, speed ±0.25, reset 1x, seek ±5/±10, loop, theater, fullscreen, cinema, ambient, captions, PiP, stop, screenshot), data minimization (toggle + show count), SponsorBlock (toggle, reload, hide-on-video, vote up/down on current segment), bookmarks, force-watched, force-channel-watched, sleep timer, theme engine, dashboard (open, focus search, reset all), and the global ones (open command palette, show hotkey cheat sheet, check for updates, export/import settings). A new glass command palette (Ctrl+Shift+K) fuzzy-matches every registered action and every feature toggle. A new cheat sheet (?) lists all current hotkeys, filterable. The dashboard is now keyboard-navigable: j/k move between cards, Enter/Space toggle the focused card's master, / focuses the search box, ? shows the cheat sheet, n re-runs the search. The action registry is exposed on window.YTPlus.actions for external scripts (list, run, get, setBinding, resetBinding, conflicts). 30+ actions added; every new action is rebindable from the existing "Custom Keyboard Shortcuts" panel. v3.0.17: Update banner now opens the user.js file (not meta.js) so a single click on the "YT+ v3.0.X available" toast downloads and installs the new version directly. The @updateURL header still points at the cheap meta.js for background update checks. v3.0.16: New "Data Minimization" feature — a master toggle in the dashboard that, when ON, kills YouTube's outbound telemetry, playback stats, ad-event beacons, and DoubleClick/pagead tracking without breaking playback. Implementation: a single global wrapper on fetch(), XMLHttpRequest, and navigator.sendBeacon() that short-circuits requests to /api/stats/* (watchtime/playback/qoe/ads/att_get), /youtubei/v1/log_event, /pagead/*, /ptracking, /get_midroll_info, and googleads.g.doubleclick.net/pagead/*. The wrapper returns a synthetic 204 Response for fetch() and `true` for sendBeacon, so the player thinks the call succeeded. Three sub-toggles (Block /api/stats/*, Block /pagead and DoubleClick, Block /youtubei/v1/log_event) default ON when the master is on; a fourth (Allow player heartbeat) defaults ON and should be kept ON since YouTube uses the heartbeat to keep the stream alive. The wrapper is installed at IIFE start, sits OUTSIDE the geoOverride / netMonitor wrappers (so they still see content traffic), and is re-armed live by the master toggle via a cfg.changed hook. Exposed on YTPlus.dataMin for external scripts: on()/off()/toggle(), stats() with dropped count + byHost map, shouldDrop(url) for ad-hoc testing, endpoints() reference. v3.0.15: Hotfix — removed a duplicate `function Tt()` declaration that was inadvertently inserted at the end of the v3.0.14 SponsorBlock rewrite block. The duplicate caused browsers to throw "SyntaxError: Identifier 'Tt' has already been declared" at script load, so the entire script failed to execute and TM's update check couldn't even fetch segments. The original `Tt` (the random-base64 generator used by the play tracker) is preserved; only the spurious second copy was deleted. v3.0.14: Major SponsorBlock expansion — added 2 categories (chapter, hook), 4 action types (skip/mute/poi/chapter/full), all 9 /api/skipSegments filters (minVotes, minViews, maxViews, locked, hidden, ignored, trimUUIDs, actionTypes, requiredSegments), public instance picker, per-segment and per-channel override editors, color override per category, up-next preview chip, user-stats HUD, vote/edit/ignore/hide/lock/viewed endpoints, binary-search segment lookup, debounced seekbar repaint, exponential backoff, and 1-hour cache TTL. v3.0.13: Fixed false "update available" notification for users on the latest version (the installed-version string was being compared as a character array, so "3.0.12"[2] === "2" caused 12 != 2 to fire). Both sides are now parsed into integer arrays before comparison. v3.0.12: Dashboard performance fix — removed heavy backdrop-filter, noise overlay, and transform transition so the panel moves 1:1 with the cursor on 144Hz+ monitors.
+// @version      3.0.20.0
+// @description  YT+ makes YouTube yours: kill ads, clutter, and telemetry; add SponsorBlock, themes, screenshots, keyboard control, session history, and 120+ opt-in features. 100% local. v3.0.20.0: production audit round 2 — fixed four scope collisions that silently broke channel blocking / force-CC / caption settings (and a data-corruption path), made geo/network wrappers chain-safe, hardened BFCache restore, and added clipboard screenshots, speed step, per-channel speed memory, and a jump-to-highlight action. Full notes in the GitHub release.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -631,49 +631,42 @@
   // The main maintenance loop. We self-register the interval so it
   // shows up in audit() and is disposed cleanly on pagehide.
   try {
+    // v3.0.20.0: the tick now checks visibility itself. The old
+    // "untilHidden" flag on the handle was set by a visibilitychange
+    // listener but never read by anything — and once set it was never
+    // cleared, so it was wrong in both directions.
     const _mpMaintHandle = _mp.safeSetInterval(
-      () => { try { _mp.runMaintenance(); } catch (e) {} },
+      () => {
+        try {
+          if (
+            typeof document !== "undefined" &&
+            document.visibilityState === "hidden"
+          )
+            return;
+          _mp.runMaintenance();
+        } catch (e) {}
+      },
       3e4, // every 30s when visible
       "memory-maint",
     );
-    // Skip ticks while the tab is hidden — the maintenance work is
-    // not worth the CPU cost. Visibility flips are handled by a
-    // tiny dedicated listener (also self-registered).
-    try {
-      const _maintVis = _mp.safeListener(
-        typeof document !== "undefined" ? document : null,
-        "visibilitychange",
-        () => {
-          if (
-            typeof document !== "undefined" &&
-            document.visibilityState === "hidden" &&
-            _mpMaintHandle &&
-            _mpMaintHandle.alive &&
-            _mpMaintHandle.alive()
-          ) {
-            // We don't actually pause the interval (would require
-            // re-arming), but we DO suppress the body of the next
-            // tick. _mpMaintHandle.untilHidden is read by the tick
-            // wrapper.
-            _mpMaintHandle.untilHidden = true;
-          }
-        },
-        void 0,
-        "memory-maint-vis",
-      );
-    } catch (e) {}
-    // Pagehide: full dispose. Don't rely on beforeunload; pagehide
-    // fires in BOTH tab-close and BFCache cases (which is the
-    // right thing for the in-flight timers and observers).
+    // v3.0.20.0: pagehide used to call _mp.disposeAll(). YouTube is an
+    // SPA and relies on the browser BFCache for back/forward nav; a
+    // pagehide+restore brought the tab back with the entire resource
+    // registry dead (_running=false forever, caches list wiped, and
+    // every safe-wrapped listener/timer/observer released). On a real
+    // tab close the whole JS context dies anyway, so full teardown on
+    // pagehide bought nothing and broke BFCache restores. Now it's a
+    // soft checkpoint: one final maintenance pass, and the registry
+    // survives the freeze.
     try {
       _mp.safeListener(
         typeof window !== "undefined" ? window : null,
         "pagehide",
         () => {
-          try { _mp.disposeAll(); } catch (e) {}
+          try { _mp.runMaintenance(); } catch (e) {}
         },
         { capture: true },
-        "memory-pagehide",
+        "memory-pagehide-checkpoint",
       );
     } catch (e) {}
   } catch (e) {}
@@ -715,7 +708,7 @@
       ("undefined" != typeof GM_info &&
         GM_info.script &&
         GM_info.script.version) ||
-      "2.1.0",
+      "3.0.20.0",
     r = "https://sponsor.ajay.app",
     o = (() => {
       try {
@@ -809,6 +802,11 @@
         silentToasts: !1,
         speedDefault: 1,
         speedRemember: !1,
+        // v3.0.20.0: configurable increment for the speed-up/-down
+        // hotkeys (actions play.speedUp / play.speedDown).
+        speedStep: 0.25,
+        // v3.0.20.0: per-channel speed memory.
+        speedPerChannelOn: !1,
         loopVideo: !1,
         frameStep: !1,
         abLoopOn: !1,
@@ -934,6 +932,8 @@
         screenshotOn: !1,
         screenshotFmt: "png",
         screenshotScale: 1,
+        // v3.0.20.0: copy to clipboard instead of downloading.
+        screenshotClipboard: !1,
         sleepTimerOn: !1,
         sleepTimerMin: 30,
         forceWatchedOn: !1,
@@ -3222,7 +3222,6 @@
   // status line and `ytPlus.sb.stats()`.
   let St_lastFetch = 0,
     St_lastErr = null,
-    St_fetchInFlight = 0,
     St_segmentsRaw = 0;
   // Backoff state. Increments on 429/5xx, halves on each successful
   // fetch. The cache TTL is `baseTtl * 2^backoffLevel` and the in-flight
@@ -4046,6 +4045,15 @@
         // Cache key includes ALL filter settings so changing any of
         // them in the dashboard invalidates the cache.
         const filterKey = [
+          // v3.0.20.0: include the server identity + privacy mode in the
+          // key. Previously, switching sbServerPreset / sbServer / sbPrivacy
+          // in the dashboard reused the OLD cached payload for up to the
+          // full TTL (1h x backoff), serving segments fetched from the
+          // previous server — and, worse, a privacy-mode bucket response
+          // could be replayed as if it were the direct-lookup response.
+          S.sbServerPreset || "ajay",
+          S.sbServer || "",
+          S.sbPrivacy ? 1 : 0,
           S.sbMinVotes || 0,
           S.sbMinViews || 0,
           S.sbMaxViews || 0,
@@ -4080,7 +4088,6 @@
               }
               St_lastErr = "HTTP " + r.status;
               St_lastFetch = Date.now();
-              St_fetchInFlight = Math.max(0, St_fetchInFlight - 1);
               return cached ? cached.segments : [];
             }
             let body = await r.json();
@@ -5645,7 +5652,7 @@
     summary:
       "Pick a default playback speed, or have YT+ remember the speed you chose for each video.",
     masterKey: "speedRemember",
-    keys: ["speedDefault", "speedRemember"],
+    keys: ["speedDefault", "speedRemember", "speedStep"],
     apply(e) {
       const t = Math.max(0.0625, Math.min(16, Number(S.speedDefault) || 1)),
         a = () => {
@@ -5666,7 +5673,7 @@
         }));
     },
     settings(e) {
-      e.appendChild(
+      (e.appendChild(
         Ro(
           "Default speed",
           "speedDefault",
@@ -5677,9 +5684,108 @@
             ]),
           ),
         ),
-      );
+      ),
+        e.appendChild(
+          Ro("Hotkey step", "speedStep", {
+            0.05: "±0.05x",
+            0.1: "±0.1x",
+            0.25: "±0.25x (default)",
+            0.5: "±0.5x",
+            1: "±1x",
+          }),
+        ));
     },
   }),
+    xa.register({
+      id: "speed-per-channel",
+      name: "Per-Channel Speed Memory",
+      summary:
+        "Remembers the playback speed you last used on each channel and restores it automatically on their videos.",
+      masterKey: "speedPerChannelOn",
+      keys: ["speedPerChannelOn"],
+      apply(e) {
+        if (!S.speedPerChannelOn) return;
+        // Memory lives in one IDB kv record (LRU-capped at 200 channels)
+        // instead of one key per channel, so the store can't grow without
+        // bound for binge watchers.
+        let _spdLastVid = "";
+        const _rd = () =>
+          v("kv", "__perChSpeed__").then((r) =>
+            r && "object" == typeof r.v && r.v ? r.v : {},
+          );
+        const _wr = (map) =>
+          k("kv", { k: "__perChSpeed__", v: map, updatedAt: Date.now() });
+        const _save = () => {
+          const t = ie.el();
+          if (!t) return;
+          const ch = Ne();
+          if (!ch || !isFinite(t.playbackRate)) return;
+          _rd()
+            .then((m) => {
+              const keys = Object.keys(m);
+              if (keys.length >= 200) {
+                keys.sort(
+                  (a2, b2) =>
+                    ((m[a2] && m[a2].ts) || 0) - ((m[b2] && m[b2].ts) || 0),
+                );
+                for (const k2 of keys.slice(0, 50)) delete m[k2];
+              }
+              m[ch] = { r: t.playbackRate || 1, ts: Date.now() };
+              _wr(m);
+            })
+            .catch(() => {});
+        };
+        const _restore = () => {
+          const t = ie.el(),
+            vid = ie.videoId();
+          if (!t || !vid || vid === _spdLastVid) return;
+          const ch = Ne();
+          if (!ch) return;
+          // Mark applied-for-this-video first so a failed lookup can't
+          // retry-fight the user's manual changes on the same video.
+          _spdLastVid = vid;
+          _rd()
+            .then((m) => {
+              const rec = m && m[ch];
+              if (
+                rec &&
+                isFinite(rec.r) &&
+                Math.abs((t.playbackRate || 1) - rec.r) > 0.01
+              ) {
+                t.playbackRate = rec.r;
+                pe(
+                  "Speed restored to " + rec.r + "x for this channel",
+                  1500,
+                  "info",
+                );
+              }
+            })
+            .catch(() => {});
+        };
+        // Media events don't bubble; listen on document in CAPTURE phase.
+        e.addListener(
+          document,
+          "ratechange",
+          (ev) => {
+            if (ev.target === ie.el()) _save();
+          },
+          !0,
+        );
+        e.addListener(
+          document,
+          "loadedmetadata",
+          (ev) => {
+            if (ev.target === ie.el()) e.addTimeout(_restore, 600);
+          },
+          !0,
+        );
+        e.onNav(() => {
+          ((_spdLastVid = ""), e.addTimeout(_restore, 1200));
+        });
+        e.addTimeout(_restore, 1500);
+      },
+      settings() {},
+    }),
     xa.register({
       id: "loop-video",
       name: "Loop Video",
@@ -6340,7 +6446,7 @@
     } catch (e) {}
     return !1;
   }
-  function Da() {
+  function Cc_state() {
     if (!S.forceCC) return { enabled: !1, displayed: !1, reason: "off" };
     if (!La()) return { enabled: !1, displayed: !1, reason: "skipped" };
     const t = ie.api();
@@ -6373,9 +6479,9 @@
       reason: !n && !o ? "no_track" : d && l ? "ok" : "track_no_render",
     };
   }
-  function Va() {
+  function Cc_apply() {
     if (!S.forceCC || !La()) return;
-    const t = Da();
+    const t = Cc_state();
     if (!t.enabled) {
       try {
         Ea();
@@ -6453,8 +6559,32 @@
         const n = "jpg" === S.screenshotFmt,
           r = n ? "jpg" : "png",
           o = n ? "image/jpeg" : "image/png",
-          i = new Date().toISOString().slice(0, 19).replace(/:/g, "-"),
-          d = document.createElement("a");
+          i = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+        // v3.0.20.0: optional copy-to-clipboard path. The browser's
+        // ClipboardItem accepts a Blob promise, so we hand it toBlob()
+        // directly and skip the synchronous toDataURL entirely (which
+        // is also the call that throws a taint SecurityError for the
+        // rare non-MSE playback path).
+        if (
+          S.screenshotClipboard &&
+          "undefined" != typeof ClipboardItem &&
+          navigator.clipboard &&
+          "function" == typeof navigator.clipboard.write
+        ) {
+          try {
+            const blobP = new Promise((res) => a.toBlob(res, o, 0.95));
+            navigator.clipboard
+              .write([new ClipboardItem({ [o]: blobP })])
+              .then(
+                () => pe("Screenshot copied to clipboard", 1800, "success"),
+                () => pe("Clipboard write failed - download it instead?", 2000, "error"),
+              );
+          } catch (e) {
+            pe("Clipboard unavailable for screenshots.", 1800, "error");
+          }
+          return;
+        }
+        const d = document.createElement("a");
         ((d.href = a.toDataURL(o, 0.95)),
           (d.download = "ytplus-" + i + "." + r),
           document.body.appendChild(d),
@@ -6699,7 +6829,7 @@
               a();
             } catch (e) {}
             try {
-              Va();
+              Cc_apply();
             } catch (e) {}
             try {
               e.addStyle(
@@ -6799,7 +6929,7 @@
         e.addInterval(() => {
           if (!S.forceCC) return;
           try {
-            const t = Da();
+            const t = Cc_state();
             if (t.enabled && !t.displayed && Date.now() - (Ma.lastVerifyFix || 0) > 4e3) {
               Ma.lastVerifyFix = Date.now();
               try {
@@ -6875,7 +7005,7 @@
         e.appendChild(
           No("Font size", "ccFontSize", 10, 72, 1, (e) => e + "px"),
         ),
-        e.appendChild(Fo("Font family (with preview)", "ccFontFamily")),
+        e.appendChild(Yp_fontRow("Font family (with preview)", "ccFontFamily")),
         e.appendChild(
           Ro("Font weight", "ccFontWeight", {
             400: "Regular",
@@ -7567,7 +7697,7 @@
       summary:
         "Save the current frame as an image. Press X to grab one instantly.",
       masterKey: "screenshotOn",
-      keys: ["screenshotOn", "screenshotFmt", "screenshotScale"],
+      keys: ["screenshotOn", "screenshotFmt", "screenshotScale", "screenshotClipboard"],
       apply() {},
       settings(e) {
         (e.appendChild(
@@ -7575,6 +7705,9 @@
         ),
           e.appendChild(
             No("Scale", "screenshotScale", 0.5, 4, 0.5, (e) => e + "x"),
+          ),
+          e.appendChild(
+            Io("Copy to clipboard (no download)", "screenshotClipboard"),
           ),
           e.appendChild(Eo([Oo("Capture now", Ia, "primary")])));
       },
@@ -7813,7 +7946,7 @@
       settings() {},
     });
   }
-  function Da(e) {
+  function Cb_norm(e) {
     if (!(e = String(e || "").trim())) return "";
     try {
       if (/^https?:\/\//i.test(e)) {
@@ -7834,7 +7967,7 @@
     const t = e.match(/@([A-Za-z0-9._-]+)/);
     return t ? "@" + t[1].toLowerCase() : e.toLowerCase();
   }
-  function qa() {
+  function Cb_parseList() {
     const e = new Set(),
       t = [],
       a = String(S.channelBlockerList || ""),
@@ -7844,12 +7977,12 @@
     for (; (o = r.exec(a)); )
       o[1].split("|").forEach((e) => n.push("@" + e.replace(/\\/g, "").trim()));
     for (const a of n) {
-      const n = Da(a);
+      const n = Cb_norm(a);
       n && !e.has(n) && (e.add(n), t.push(n));
     }
     return t;
   }
-  function Va(e) {
+  function Cb_anchorInfo(e) {
     if (!e) return { handle: "", name: "", href: "" };
     const t = e.href || e.getAttribute("href") || "";
     let a = "";
@@ -8144,7 +8277,7 @@
       'a[href*="/@"],a[href^="/@"],a[href*="/channel/"],a[href*="/c/"],a[href*="/user/"],a#channel-name,ytd-channel-name a,#channel-name a,#owner-name a',
     );
     for (const e of a) {
-      const a = Va(e),
+      const a = Cb_anchorInfo(e),
         n = (a.href || "").toLowerCase(),
         r = a.handle ? a.handle.slice(1) : "";
       for (const e of t.handles) {
@@ -8168,7 +8301,7 @@
   }
   function Wa(e) {
     if (!e || e.dataset.ytpBlockBtn) return;
-    const t = Va(e),
+    const t = Cb_anchorInfo(e),
       a = t.handle || t.name;
     if (!a) return;
     e.dataset.ytpBlockBtn = "1";
@@ -8181,8 +8314,8 @@
         "click",
         (e) => {
           (e.preventDefault(), e.stopPropagation());
-          const t = Da(a),
-            n = qa();
+          const t = Cb_norm(a),
+            n = Cb_parseList();
           (n.includes(t) || n.push(t),
             Oa({ channelBlockerOn: !0, channelBlockerList: n.join("\n") }),
             pe("Hidden: " + t, 1600, "success"));
@@ -8237,7 +8370,7 @@
       const t = (function () {
           const e = [],
             t = [];
-          for (const a of qa())
+          for (const a of Cb_parseList())
             a.startsWith("@") ? e.push(a.slice(1)) : t.push(a);
           return { handles: e, names: t };
         })(),
@@ -9844,38 +9977,24 @@
       }
     } catch (e) {}
   }
+  // v3.0.20.0: En/Bn/Pn used to "un-patch" by restoring the pristine
+  // globals. That was structurally wrong in a layered-wrapper world:
+  // _dm (data minimization) installs at IIFE start, netMonitor may have
+  // wrapped after us, and restoring e.fetch/XMLHttpRequest/sendBeacon to
+  // the PRISTINE functions silently dropped data-minimization and net
+  // telemetry for the rest of the session (and any future geo wrapper
+  // re-install captured the pristine fn, permanently bypassing _dm).
+  // Every geo wrapper already self-neutralizes when its own gate is off
+  // (xn() master + its sub-toggle), so the correct "un-patch" is a
+  // no-op: the wrapper stays installed and simply passes through.
   function En() {
-    if (ln) {
-      try {
-        e.fetch =
-          typeof __pristineFetch__ !== "undefined" ? __pristineFetch__ : mn;
-      } catch (e) {}
-      ((ln = !1), (mn = null));
-    }
+    // no-op by design (see note above)
   }
   function Bn() {
-    if (pn) {
-      try {
-        ((XMLHttpRequest.prototype.open =
-          typeof __pristineXHROpen__ !== "undefined"
-            ? __pristineXHROpen__
-            : yn),
-          (XMLHttpRequest.prototype.send =
-            typeof __pristineXHRSend__ !== "undefined"
-              ? __pristineXHRSend__
-              : gn));
-      } catch (e) {}
-      pn = !1;
-    }
+    // no-op by design (see En() note above)
   }
   function Pn() {
-    if (un && fn) {
-      try {
-        navigator.sendBeacon =
-          typeof __pristineBeacon__ !== "undefined" ? __pristineBeacon__ : fn;
-      } catch (e) {}
-      ((un = !1), (fn = null));
-    }
+    // no-op by design (see En() note above)
   }
   function In() {
     (Mn(),
@@ -10224,7 +10343,7 @@
             ((ln = !0),
             (mn = e.fetch),
             (e.fetch = function (e, t) {
-              if (!xn()) return mn.call(this, e, t);
+              if (!xn() || !S.geoPatchFetch) return mn.call(this, e, t);
               try {
                 if ("string" == typeof e && Cn(e)) {
                   const a = Sn(e);
@@ -10247,6 +10366,7 @@
             (XMLHttpRequest.prototype.open = function () {
               try {
                 xn() &&
+                  S.geoPatchXHR &&
                   "string" == typeof arguments[1] &&
                   Cn(arguments[1]) &&
                   ((arguments[1] = Sn(arguments[1])), (this.__ytpGeoSafe = !0));
@@ -10276,6 +10396,7 @@
                 navigator.sendBeacon = function (e, t) {
                   try {
                     xn() &&
+                      S.geoPatchBeacon &&
                       "string" == typeof e &&
                       Cn(e) &&
                       ((e = Sn(e)), "string" == typeof t && (t = Tn(t, e)));
@@ -10777,7 +10898,7 @@
         };
         const a = () => {
           const v = ie.el();
-          v && !v.paused && !v.ended && ((o += 1), r < 4 && pe("Rebuffer #" + o, 1200, "info"), (r = r));
+          v && !v.paused && !v.ended && ((o += 1), r < 4 && (pe("Rebuffer #" + o, 1200, "info"), (r += 1)));
         };
         const l = () => {
           r = 0;
@@ -12549,6 +12670,11 @@
       : ur && (ur.remove(), (ur = null));
   }
   function mr() {
+    // v3.0.20.0: the fetch/XHR/beacon wrappers are NOT un-installed here
+    // anymore. Restoring the pristine globals knocked _dm (and geo) out
+    // of the chain when netMonitor was toggled off. The wrappers now
+    // persist and self-neutralize on (master && !privacyShield && subFlag)
+    // inside their own bodies; only module-local resources are torn down.
     (Fn && (clearTimeout(Fn), (Fn = 0)),
       tr(),
       (function () {
@@ -12557,41 +12683,6 @@
             Yn.disconnect();
           } catch (e) {}
           Yn = null;
-        }
-      })(),
-      (function () {
-        if (zn) {
-          try {
-            e.fetch =
-              typeof __pristineFetch__ !== "undefined" ? __pristineFetch__ : zn;
-          } catch (e) {}
-          zn = null;
-        }
-      })(),
-      (function () {
-        if (Wn) {
-          try {
-            ((XMLHttpRequest.prototype.open =
-              typeof __pristineXHROpen__ !== "undefined"
-                ? __pristineXHROpen__
-                : Wn),
-              (XMLHttpRequest.prototype.send =
-                typeof __pristineXHRSend__ !== "undefined"
-                  ? __pristineXHRSend__
-                  : Un));
-          } catch (e) {}
-          ((Wn = null), (Un = null));
-        }
-      })(),
-      (function () {
-        if (Kn) {
-          try {
-            navigator.sendBeacon =
-              typeof __pristineBeacon__ !== "undefined"
-                ? __pristineBeacon__
-                : Kn;
-          } catch (e) {}
-          Kn = null;
         }
       })(),
       ur && (ur.remove(), (ur = null)));
@@ -13018,6 +13109,11 @@
             S.netMonitorPatchFetch &&
             ((zn = e.fetch),
             (e.fetch = function (e, t) {
+              // v3.0.20.0: the wrapper now stays installed permanently
+              // and self-neutralizes (restoring e.fetch to the pristine
+              // reference used to knock _dm / geo out of the chain).
+              if (!(S.netMonitorOn && !S.privacyShieldOn && S.netMonitorPatchFetch))
+                return zn.call(this, e, t);
               let a,
                 n = "";
               try {
@@ -13059,6 +13155,9 @@
               return Wn.apply(this, arguments);
             }),
             (XMLHttpRequest.prototype.send = function (e) {
+              // v3.0.20.0: permanent wrapper, self-neutralizing gate.
+              if (!(S.netMonitorOn && !S.privacyShieldOn && S.netMonitorPatchXHR))
+                return Un.apply(this, arguments);
               const t = this.__ytpNetHost,
                 a = e ? Qn(e) : 0;
               if (t && Zn(t)) {
@@ -13091,8 +13190,12 @@
                 return;
               }
               navigator.sendBeacon = function (e, t) {
+                // v3.0.20.0: permanent wrapper, self-neutralizing gate.
                 try {
-                  $n(Xn(e), 0, Qn(t), e);
+                  S.netMonitorOn &&
+                    !S.privacyShieldOn &&
+                    S.netMonitorPatchBeacon &&
+                    $n(Xn(e), 0, Qn(t), e);
                 } catch (e) {}
                 return Kn(e, t);
               };
@@ -22469,7 +22572,7 @@
     });
     return a.appendChild(n), n.appendChild(r), n.appendChild(o), n.appendChild(i), a;
   }
-  function Fo(e, t) {
+  function Yp_fontRow(e, t) {
     const a = To("div", "ytp-col");
     (a.appendChild(To("span", "ytp-lbl", e)),
       a.appendChild(
@@ -22511,7 +22614,7 @@
               }),
               d.appendChild(a));
           };
-          qa().forEach((e) => {
+          Yt_fontFamilies().forEach((e) => {
             c(
               e,
               e
@@ -22548,7 +22651,7 @@
       ));
     return a;
   }
-  function qa() {
+  function Yt_fontFamilies() {
     return [
       "Arial, sans-serif",
       "Arial Black, sans-serif",
@@ -22880,7 +22983,7 @@
       i
     );
   }
-  function Fo(e, t, a, n) {
+  function Yp_clampRect(e, t, a, n) {
     const r = window.innerWidth,
       o = window.innerHeight;
     return (
@@ -22914,7 +23017,7 @@
   function Wo() {
     if (!wo) return;
     const e = wo.getBoundingClientRect();
-    zo(Fo(e.left, e.top, e.width, e.height));
+    zo(Yp_clampRect(e.left, e.top, e.width, e.height));
   }
   function Uo() {
     wo ||
@@ -23088,7 +23191,7 @@
                 t = window.innerHeight,
                 a = S.dashW > 0 ? S.dashW : 460,
                 n = S.dashH > 0 ? S.dashH : Math.min(t - 40, 720);
-              return Fo(
+              return Yp_clampRect(
                 S.dashX >= 0 ? S.dashX : Math.max(8, e - a - 16),
                 S.dashY >= 0 ? S.dashY : 56,
                 a,
@@ -23106,7 +23209,7 @@
                 if (!t) return;
                 const i = e.clientX - a,
                   d = e.clientY - n,
-                  c = Fo(r + i, o + d, wo.offsetWidth, wo.offsetHeight);
+                  c = Yp_clampRect(r + i, o + d, wo.offsetWidth, wo.offsetHeight);
                 ((wo.style.left = c.x + "px"),
                   (wo.style.top = c.y + "px"),
                   (wo.style.right = "auto"),
@@ -23174,7 +23277,7 @@
                 (e) => {
                   if (!t) return;
                   const i = wo.getBoundingClientRect(),
-                    d = Fo(
+                    d = Yp_clampRect(
                       i.left,
                       i.top,
                       r + (e.clientX - a),
@@ -23256,11 +23359,35 @@
               const t = JSON.parse(e.target.result),
                 a = Object.assign({}, S);
               (t.cfg && (S = Object.assign({}, s, D(t.cfg))),
+                // v3.0.20.0: validate imported rows before writing. The
+                // previous code PUT every element of the arrays verbatim
+                // into IDB — a malformed record (missing keyPath field,
+                // wrong shape) rejected Promise.all HALF WAY THROUGH,
+                // leaving a silent mix of imported and old rows with no
+                // error surfaced. Filter to well-formed rows first.
                 Array.isArray(t.history) &&
-                  (await Promise.all(t.history.map((e) => Be(e)))),
+                  (await Promise.all(
+                    t.history
+                      .filter(
+                        (e) =>
+                          e &&
+                          "object" == typeof e &&
+                          "string" == typeof e.videoId &&
+                          e.videoId,
+                      )
+                      .map((e) => Be(e)),
+                  )),
                 Array.isArray(t.bookmarks) &&
                   (await Promise.all(
-                    t.bookmarks.map((e) => k("bookmarks", e)),
+                    t.bookmarks
+                      .filter(
+                        (e) =>
+                          e &&
+                          "object" == typeof e &&
+                          "string" == typeof e.id &&
+                          e.id,
+                      )
+                      .map((e) => k("bookmarks", e)),
                   )),
                 Y(),
                 ue(),
@@ -23736,8 +23863,10 @@
         _mp.releaseKind(kind);
         return before - _mp.snapshot().live;
       },
-      // Full teardown. Most external callers should NOT call this
-      // — it's for the pagehide path. Exposed only for completeness.
+      // Full teardown. Most external callers should NOT call this —
+      // it is no longer wired to pagehide (v3.0.20.0: pagehide is a
+      // maintenance checkpoint so BFCache restores keep the registry
+      // alive); this remains exposed for completeness only.
       disposeAll: () => _mp.disposeAll(),
     },
   };
@@ -24234,11 +24363,13 @@
         _play("play.toggleMute", "Mute / unmute", "KeyM", (v) => {
           v.muted = !v.muted;
         });
-        _play("play.speedUp", "Speed up (+0.25x)", "Period", (v) => {
-          v.playbackRate = Math.min(4, (v.playbackRate || 1) + 0.25);
+        _play("play.speedUp", "Speed up", "Period", (v) => {
+          const step = Math.max(0.05, Math.min(1, Number(S.speedStep) || 0.25));
+          v.playbackRate = Math.min(4, Math.round(((v.playbackRate || 1) + step) * 100) / 100);
         });
-        _play("play.speedDown", "Speed down (-0.25x)", "Comma", (v) => {
-          v.playbackRate = Math.max(0.25, (v.playbackRate || 1) - 0.25);
+        _play("play.speedDown", "Speed down", "Comma", (v) => {
+          const step = Math.max(0.05, Math.min(1, Number(S.speedStep) || 0.25));
+          v.playbackRate = Math.max(0.25, Math.round(((v.playbackRate || 1) - step) * 100) / 100);
         });
         _play("play.speedReset", "Reset speed to 1x", "Digit0", (v) => {
           v.playbackRate = 1;
@@ -24409,6 +24540,33 @@
             Bt_voteSponsorTime(seg.UUID, 0).catch((err) =>
               pe("Vote failed: " + (err && err.message), 2000, "error"),
             );
+          },
+        });
+        _register({
+          id: "sb.jumpToHighlight",
+          label: "SponsorBlock: jump to highlight (POI)",
+          cat: "sponsorblock",
+          def: null,
+          run: () => {
+            if (!S.sponsorblockOn || !tt || !tt.length) {
+              pe("No SponsorBlock segments loaded", 1500, "info");
+              return;
+            }
+            const poi = tt.find(
+              (s) =>
+                s &&
+                (s.category === "poi_highlight" || s.actionType === "poi"),
+            );
+            if (!poi || !Array.isArray(poi.segment)) {
+              pe("No highlight segment on this video", 1500, "info");
+              return;
+            }
+            const v = ie.el();
+            if (!v) return;
+            try {
+              v.currentTime = poi.segment[0];
+              pe("Jumped to the highlight", 1200, "success");
+            } catch (e) {}
           },
         });
         _register({

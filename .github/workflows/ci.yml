@@ -19,12 +19,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Validate JavaScript syntax
         run: |
           echo "Validating yt+.user.js syntax..."
           node --check yt+.user.js
-          echo "✅ Syntax is valid"
+          echo "Syntax is valid"
 
       - name: Validate userscript headers
         run: |
@@ -33,28 +34,41 @@ jobs:
           head -80 yt+.user.js | grep -q '^// @version'
           head -80 yt+.user.js | grep -q '^// @match        https://www.youtube.com/\*'
           head -80 yt+.user.js | grep -q '^// @run-at       document-start'
-          echo "✅ Required headers present"
+          echo "Required headers present"
 
       - name: Basic structure check
         run: |
-          echo "Performing basic structure validation..."
-          # Ensure the file starts with the userscript header
           head -1 yt+.user.js | grep -q '// ==UserScript=='
-          # Ensure it ends with the IIFE closer
           tail -5 yt+.user.js | grep -q '})();'
-          echo "✅ Basic structure looks correct"
+          echo "Basic structure looks correct"
+
+      - name: Sanity check for scope collisions
+        run: |
+          # The v3.0.20.0 audit class: duplicate top-level function
+          # declarations must never come back (hoisting silently breaks
+          # every consumer of the shadowed declaration).
+          DUPS=$(grep -oE '^  function [A-Za-z0-9_$]+\(' yt+.user.js | sort | uniq -d)
+          if [ -n "$DUPS" ]; then
+            echo "Duplicate top-level function declarations found:"
+            echo "$DUPS"
+            exit 1
+          fi
+          echo "No top-level scope collisions"
+
+      - name: Install dev dependencies (jsdom for the behavior suites)
+        run: npm install
+
+      - name: Run the full QA matrix
+        run: node tests/run-all.js
 
       - name: Size sanity check
         run: |
           SIZE=$(stat -c%s yt+.user.js)
           echo "Userscript size: ${SIZE} bytes"
           if [ "$SIZE" -lt 100000 ]; then
-            echo "⚠️  Warning: Userscript seems unusually small"
+            echo "Warning: Userscript seems unusually small"
           fi
-          echo "✅ Size check passed"
 
-  # Future-proof: placeholder for additional validation if needed
-  # (e.g. header metadata consistency, etc.)
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
@@ -63,5 +77,9 @@ jobs:
     steps:
       - name: Report status
         run: |
-          echo "All validation jobs completed successfully."
-          echo "Repository is in a healthy minimal state."
+          echo "All validation jobs completed."
+          if [ "${{ needs.validate-userscript.result }}" != "success" ]; then
+            echo "validate-userscript failed"
+            exit 1
+          fi
+          echo "Repository is in a healthy state."

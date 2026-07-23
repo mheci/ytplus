@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.20.0
-// @description  YT+ makes YouTube yours: kill ads, clutter, and telemetry; add SponsorBlock, themes, screenshots, keyboard control, session history, and 120+ opt-in features. 100% local. v3.0.20.0: production audit round 2 — fixed four scope collisions that silently broke channel blocking / force-CC / caption settings (and a data-corruption path), made geo/network wrappers chain-safe, hardened BFCache restore, and added clipboard screenshots, speed step, per-channel speed memory, and a jump-to-highlight action. Full notes in the GitHub release.
+// @version      3.0.21.0
+// @description  YT+ makes YouTube yours: kill ads, clutter, and telemetry; add SponsorBlock, themes, screenshots, keyboard control, session history, and 120+ opt-in features. 100% local. v3.0.21.0: maintenance release — repository slimmed to the essentials (script, README, license); script icon now served from GitHub Releases. No functional changes. Full notes in the GitHub release.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -33,7 +33,7 @@
 // @connect      api.github.com
 // @connect      raw.githubusercontent.com
 // @connect      objects.githubusercontent.com
-// @icon         https://raw.githubusercontent.com/mheci/ytplus/main/icon.png
+// @icon         https://github.com/mheci/ytplus/releases/latest/download/icon.png
 // @noframes
 // @updateURL    https://github.com/mheci/ytplus/releases/latest/download/yt%2B.meta.js
 // @downloadURL  https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js
@@ -708,7 +708,7 @@
       ("undefined" != typeof GM_info &&
         GM_info.script &&
         GM_info.script.version) ||
-      "3.0.20.0",
+      "3.0.21.0",
     r = "https://sponsor.ajay.app",
     o = (() => {
       try {

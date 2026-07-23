@@ -4,7 +4,7 @@
 
 **Make YouTube yours.** A single userscript that kills ads, clutter, and telemetry, adds powerful theming, SponsorBlock, screenshots, keyboard control, session history, and more.
 
-[![Version](https://img.shields.io/badge/version-3.0.20.0-ff3d7f)](https://github.com/mheci/ytplus/releases/latest)
+[![Version](https://img.shields.io/badge/version-3.0.21.0-ff3d7f)](https://github.com/mheci/ytplus/releases/latest)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js)
 
@@ -14,9 +14,13 @@
 
 ---
 
+## What's New in v3.0.21.0
+
+- **Repository slim-down** — the repo now carries exactly three files: the userscript, this README, and the license. The script icon is served from the GitHub release assets instead of the repo tree. No functional changes.
+
 ## What's New in v3.0.20.0
 
-**Audit round 2** — ten more themed passes over all 25k+ lines (full ledger in [AUDIT.md](AUDIT.md)). This round caught a family of long-standing latent bugs no earlier pass had found, plus four new creative features:
+**Audit round 2** — ten themed passes over all 25k+ lines caught a family of long-standing latent bugs, plus four new creative features:
 
 **Critical fixes**
 - **Four same-name function collisions** at the IIFE top level (present since v1.0.0). With hoisting, the last declaration wins everywhere — so:
@@ -33,24 +37,16 @@
 - **Per-channel speed memory** — YT+ remembers each channel's speed (LRU-capped) and restores it on their videos.
 - **SponsorBlock jump-to-highlight** palette action (seek to the POI highlight).
 
-Also: `@icon` 404 fixed (62 KB optimized icon back in the repo), `@description` slimmed 4.5 KB → 0.55 KB, `yt+.meta.js` restored in-repo (update checker clients fetch less on every background check), un-capped rebuffer toasts capped, import validation hardened, and the **test suites recovered from git history** — 9 suites / 324+ checks now gate every push in CI. Details: [CHANGELOG.md](CHANGELOG.md).
-
 ## What's New in v3.0.19.0
 
 - Major production-grade audit and performance refactor (full repository review by Senior JS Performance Engineer).
-- **Startup improvements**: Deferral of heavy initialization via `requestIdleCallback` (significant reduction in initial page load cost).
-- **Glassmorphism fixes**: Complete isolation of glass effects — menus, dialogs, popups, flyouts, overlays, and context menus now render correctly.
-- **Observer consolidation**: Single centralized YouTube SPA + player-ready observer replaces multiple redundant MutationObservers.
-- **Hotkey system optimization**: Single global key listener with proper guards and delegation.
+- **Startup improvements**: deferral of heavy initialization via `requestIdleCallback` (significant reduction in initial page load cost).
+- **Glassmorphism fixes**: complete isolation of glass effects — menus, dialogs, popups, flyouts, overlays, and context menus now render correctly.
+- **Observer consolidation**: single centralized YouTube SPA + player-ready observer replaces multiple redundant MutationObservers.
+- **Hotkey system optimization**: single global key listener with proper guards and delegation.
 - Memory protection (`_mp`) enforcement and lifecycle hardening.
-- All changes are production-ready with regression safeguards.
 
-## What's New in v3.0.18.10
-
-- **"Force video as watched" (Shift+W)** now reliably registers in YouTube Account History using per-video `playbackTracking` URLs.
-- Two new toggles: `forceWatchedAccountHistory` and `forceWatchedLocalHistory` (both default ON).
-- Toast feedback on hotkey press.
-- Legacy endpoints kept as fallback.
+Older release notes live on the **[Releases page](https://github.com/mheci/ytplus/releases)**.
 
 ---
 
@@ -94,7 +90,7 @@ Works on:
 
 ## Update
 
-The script updates itself automatically via your userscript manager (background checks fetch the tiny `yt+.meta.js` from `/releases/latest/download/`).
+The script updates itself automatically via your userscript manager — background checks fetch the tiny `yt+.meta.js` asset from the [latest release](https://github.com/mheci/ytplus/releases/latest), so update checks stay cheap.
 
 You can also use the menu command **"Check for updates"**.
 
@@ -121,14 +117,6 @@ You can also use the menu command **"Check for updates"**.
 | `X`              | Screenshot                 |
 
 All hotkeys are fully rebindable in the dashboard.
-
----
-
-## Development
-
-- `npm install` then `npm test` — runs the full QA matrix (9 suites: jsdom behavior tests for data-minimization, SponsorBlock, hotkeys, force-watched, memory protection, update checker, plus static scope/feature/meta guards).
-- CI runs the same matrix on every push and PR.
-- [AUDIT.md](AUDIT.md) is the standing ledger of the multi-pass production audits (Round 1: v3.0.19.0 · Round 2: v3.0.20.0).
 
 ---
 

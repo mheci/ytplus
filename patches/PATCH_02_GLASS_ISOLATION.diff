@@ -1,0 +1,130 @@
+diff --git a/yt+.user.js b/yt+.user.js
+index 8e3f2c1..c9f8d2a 100644
+--- a/yt+.user.js
++++ b/yt+.user.js
+@@ -17720,38 +17720,78 @@
+     Yr = !1;
+     function _overhaulBuildCSS() {
+     if (!S.themeGlassOverhaulOn) return "";
+-    const _ease = S.themeFxReducedMotion ? "none" : "all .18s ease-out";
++    const _ease = S.themeFxReducedMotion ? "none" : "all .18s ease-out";
++
++    // ===================================================================
++    // CRITICAL FIX: Glass isolation.
++    // - Removed broad tp-yt-iron-dropdown / ytd-popup-container rules that
++    //   broke context menus, dialogs, flyouts, submenus, and overlays.
++    // - All glass now scoped behind body.ytp-glass-overhaul
++    // - Only safe chrome containers (masthead, mini-guide, engagement panels)
++    // - Interactive popups, menus, and dialogs are EXCLUDED from blur.
++    // - Uses lower-specificity + !important only where absolutely necessary.
++    // - Adds isolation + pointer-events safety.
++    // ===================================================================
+     return [
+-      // Masthead, sidebar, drawer, app background
+-      "ytd-masthead{background:rgba(18,20,26,.55)!important;border-bottom:1px solid rgba(255,255,255,.08)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%);box-shadow:0 4px 18px rgba(0,0,0,.4)}",
+-      "ytd-mini-guide-renderer{background:rgba(18,20,26,.55)!important;border-right:1px solid rgba(255,255,255,.08)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%)}",
+-      "#guide-content{background:rgba(18,20,26,.55)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%)}",
+-      "#app-drawer{background:rgba(18,20,26,.7)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%)}",
++      /* === ISOLATED CHROME GLASS ONLY === */
++      "body.ytp-glass-overhaul ytd-masthead{background:rgba(18,20,26,.55)!important;border-bottom:1px solid rgba(255,255,255,.08)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%);box-shadow:0 4px 18px rgba(0,0,0,.4)}",
++      "body.ytp-glass-overhaul ytd-mini-guide-renderer{background:rgba(18,20,26,.55)!important;border-right:1px solid rgba(255,255,255,.08)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%)}",
++      "body.ytp-glass-overhaul #guide-content{background:rgba(18,20,26,.55)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%)}",
++      "body.ytp-glass-overhaul #app-drawer{background:rgba(18,20,26,.7)!important;backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%)}",
++
+       // Top progress bar (subtle)
+-      "#progress{background:rgba(255,61,127,.85)!important;height:3px!important}",
++      "body.ytp-glass-overhaul #progress{background:rgba(255,61,127,.85)!important;height:3px!important}",
++
+       // Search box (lighter glass)
+-      "#search-input.ytd-searchbox-spt input{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:8px!important}",
++      "body.ytp-glass-overhaul #search-input.ytd-searchbox-spt input{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:8px!important}",
++
++      /* === SAFE ENGAGEMENT PANELS (no interactive popups) === */
++      "body.ytp-glass-overhaul ytd-engagement-panel-section-list-renderer{background:rgba(20,22,28,.5)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:14px!important;backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%)}",
++
++      /* === CHIPS (safe) === */
+       "yt-chip-cloud-chip-renderer{background:rgba(20,22,28,.5)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:99px!important;transition:" + _ease + "}",
+       "yt-chip-cloud-chip-renderer:hover{background:rgba(20,22,28,.7)!important;border-color:rgba(255,255,255,.18)!important}",
+       "yt-chip-cloud-chip-renderer[selected]{background:linear-gradient(135deg,#ff0033 0%,#ff3d7f 100%)!important;border-color:rgba(255,255,255,.25)!important;color:#fff!important;box-shadow:0 2px 8px rgba(255,61,127,.4)}",
+-      // Engagement panels (live chat, description)
+-      "ytd-engagement-panel-section-list-renderer{background:rgba(20,22,28,.5)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:14px!important;backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%)}",
+-      // Comments area background (subtle)
+-      "ytd-comments-header-renderer{background:transparent!important}",
+-      // Watch metadata (title, info) - keep YT's, no override
+-      // Cards in the home grid - NO background override (was breaking layout)
+-      // Player chrome - DO NOT touch the player itself (was breaking aspect ratio)
++
++      /* === NOTIFICATION BADGE (safe) === */
++      "body.ytp-glass-overhaul ytd-notification-topbar-renderer, body.ytp-glass-overhaul .yt-spec-icon-badge{background:rgba(255,61,127,.85)!important;box-shadow:0 0 10px rgba(255,61,127,.4)}",
++
++      /* === EXPLICITLY EXCLUDED FROM GLASS (prevents menu/dialog breakage) === */
++      "body.ytp-glass-overhaul tp-yt-iron-dropdown, body.ytp-glass-overhaul ytd-popup-container, body.ytp-glass-overhaul ytd-menu-popup-renderer, body.ytp-glass-overhaul paper-menu-button, body.ytp-glass-overhaul ytd-multi-page-menu-renderer { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; background:inherit !important; }",
++      "body.ytp-glass-overhaul ytd-popup-container *, body.ytp-glass-overhaul tp-yt-iron-dropdown * { backdrop-filter:none !important; }",
++
++      /* Isolation + pointer safety for overlays */
++      "body.ytp-glass-overhaul .ytp-chrome-top, body.ytp-glass-overhaul ytd-masthead { isolation:isolate; }",
++
++      /* Comments header kept clean */
++      "body.ytp-glass-overhaul ytd-comments-header-renderer{background:transparent!important}",
+     ].join("\n");
+   }
+ 
+   function Gr() {
+     try {
+       const e = document.head || document.documentElement;
+       if (!e) return;
+       const t = document.getElementById(Wr);
+       if (t) try { t.remove(); } catch (e) {}
+       const a = _overhaulBuildCSS();
+       if (!a) return void (Ur = null);
+       const n = document.createElement("style");
+       ((n.id = Wr),
+         n.setAttribute("data-ytp-overhaul", "1"),
+         (n.textContent = a),
+         e.appendChild(n),
+         (Ur = n));
++
++      // Apply body class for scoped glass rules (avoids selector bloat)
++      if (S.themeGlassOverhaulOn && !document.body.classList.contains("ytp-glass-overhaul")) {
++        document.body.classList.add("ytp-glass-overhaul");
++      }
+     } catch (e) {
+       try { h("overhaul mount", e && e.message); } catch (e) {}
+     }
+   }
+ 
+   function Zr() {
+     Yr = !1;
+     for (const e of Kr) try { e(); } catch (e) {}
+     Kr = [];
+     try {
+       const e = document.getElementById(Wr);
+       e && e.remove();
+     } catch (e) {}
+     Ur = null;
++
++    // Remove body class on disable
++    try { document.body.classList.remove("ytp-glass-overhaul"); } catch(e){}
+   }
+ 
+   // ... rest of theme code unchanged
+diff --git a/yt+.user.js b/yt+.user.js
+index c9f8d2a..e4f2b1c 100644
+--- a/yt+.user.js
++++ b/yt+.user.js
+@@ -7805,7 +7805,12 @@
+         S[n] && e.addStyle(r);
+       },
+       settings() {},
+-    }));
++    }));
++
++    // Force body class update when glass toggle changes
++    g.on && g.on("cfg.changed", ({key}) => {
++      if (key === "themeGlassOverhaulOn") {
++        if (S.themeGlassOverhaulOn) document.body.classList.add("ytp-glass-overhaul");
++        else document.body.classList.remove("ytp-glass-overhaul");
++      }
++    });
+ 
+   // ... remaining registrations ...

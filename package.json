@@ -1,0 +1,13 @@
+{
+  "name": "ytplus",
+  "version": "3.0.21.0",
+  "private": true,
+  "description": "YT+ userscript QA harness (tests only - the product is yt+.user.js, a zero-dependency single file)",
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "check": "node --check yt+.user.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

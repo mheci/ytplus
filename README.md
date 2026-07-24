@@ -7,6 +7,7 @@
 [![Version](https://img.shields.io/badge/version-3.0.21.0-ff3d7f)](https://github.com/mheci/ytplus/releases/latest)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js)
+[![CI](https://github.com/mheci/ytplus/actions/workflows/ci.yml/badge.svg)](https://github.com/mheci/ytplus/actions/workflows/ci.yml)
 
 **[Install →](https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js)**
 
@@ -16,7 +17,8 @@
 
 ## What's New in v3.0.21.0
 
-- **Repository slim-down** — the repo now carries exactly three files: the userscript, this README, and the license. The script icon is served from the GitHub release assets instead of the repo tree. No functional changes.
+- **Packaging slim-down** — the script `@icon` is now served from the GitHub release assets (`releases/latest/download/icon.png`) instead of the repo tree, reducing clone size and aligning with the release-CDN distribution model. No functional changes to playback, blocking, or UI.
+- **CI & QA hardening** — full test matrix (9 jsdom suites, 324+ checks) with scope-collision guard, header/meta lockstep, size sanity, and cross-platform validation (Node 18/20/22, Ubuntu/Windows/macOS) now runs on every push/PR.
 
 ## What's New in v3.0.20.0
 
@@ -117,6 +119,24 @@ You can also use the menu command **"Check for updates"**.
 | `X`              | Screenshot                 |
 
 All hotkeys are fully rebindable in the dashboard.
+
+---
+
+## Development
+
+The repo contains the single-file product (`yt+.user.js`, `yt+.meta.js`, `icon.png`) plus a lightweight QA harness:
+
+```bash
+npm install
+npm test          # 9 jsdom suites, 324+ checks
+npm run check     # node --check syntax
+```
+
+- `tests/` — jsdom behavior suites covering data-minimization, SponsorBlock, force-watched, hotkeys, memory protection, scope-guard, meta consistency, update-check, and feature flags.
+- `.github/workflows/ci.yml` — validates syntax, headers, scope collisions, size, meta lockstep, and runs the full QA matrix on Node 18/20/22 and Ubuntu/Windows/macOS.
+- `tools/release.sh` — bumps version, regenerates meta, runs QA, commits/tags, and optionally creates the GitHub release via `gh`.
+
+See [AUDIT.md](AUDIT.md) and [CHANGELOG.md](CHANGELOG.md) for audit methodology and full history.
 
 ---
 

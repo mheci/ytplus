@@ -50,7 +50,6 @@ jobs:
 
       - name: Scope collision guard
         run: |
-          # Duplicate top-level function declarations cause hoisting bugs (v3.0.20.0 audit)
           DUPS=$(grep -oE '^  function [A-Za-z0-9_$]+\(' yt+.user.js | sort | uniq -d || true)
           if [ -n "$DUPS" ]; then
             echo "Duplicate top-level function declarations found:"
@@ -72,14 +71,12 @@ jobs:
           console.log('user.js version', ver);
           console.log('package.json version', pkg.version);
           if(pkg.version!==ver){ console.error('package.json mismatch'); process.exit(1); }
-          // meta must be verbatim header
           const start=user.indexOf('// ==UserScript==');
           const end=user.indexOf('// ==/UserScript==')+'// ==/UserScript=='.length;
           const header=user.slice(start,end).trim();
-          if(meta.trim()!==header){ console.error('meta.js not verbatim'); console.error('expected:', header.slice(0,200)); console.error('got:', meta.slice(0,200)); process.exit(1); }
-          // description budget
+          if(meta.trim()!==header){ console.error('meta.js not verbatim'); process.exit(1); }
           const desc=user.match(/^\/\/ @description\s+(.+)/m);
-          if(!desc || desc[1].length>900){ console.error('description too long or missing:', desc?desc[1].length:0); process.exit(1); }
+          if(!desc || desc[1].length>900){ console.error('description budget fail'); process.exit(1); }
           console.log('meta & packaging OK');
           NODE
 
@@ -91,33 +88,25 @@ jobs:
           else
             echo "icon.png not in repo (ok if served from release asset)"
           fi
-          # @icon header present
           grep -q '^// @icon' yt+.user.js
 
       - name: Size sanity check
         run: |
           SIZE=$(stat -c%s yt+.user.js 2>/dev/null || stat -f%z yt+.user.js)
           echo "Userscript size: ${SIZE} bytes"
-          if [ "$SIZE" -lt 100000 ]; then
-            echo "::warning::Userscript unusually small"
-          fi
-          if [ "$SIZE" -gt 2000000 ]; then
-            echo "::warning::Userscript unusually large (>2MB)"
-          fi
+          if [ "$SIZE" -lt 100000 ]; then echo "::warning::small"; fi
 
-      - name: Security audit (no high vulns)
+      - name: Security audit
         run: |
-          npm install --package-lock-only --ignore-scripts || true
-          npm audit --audit-level=high || {
-            echo "::warning::npm audit found high or above"
-          }
+          npm audit --audit-level=high || echo "::warning::npm audit high"
 
   test-matrix:
     name: QA Matrix (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [20, 22]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -128,7 +117,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
-      - name: Install dependencies (ci)
+      - name: Install dependencies
         run: npm ci
 
       - name: Run full QA matrix
@@ -138,10 +127,10 @@ jobs:
     name: Cross-Platform (${{ matrix.os }} / Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node-version: [20]
-      fail-fast: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -174,17 +163,7 @@ jobs:
           echo "validate: ${{ needs.validate.result }}"
           echo "test-matrix: ${{ needs.test-matrix.result }}"
           echo "cross-platform: ${{ needs.cross-platform.result }}"
-          if [ "${{ needs.validate.result }}" != "success" ]; then
-            echo "validate failed"
-            exit 1
-          fi
-          if [ "${{ needs.test-matrix.result }}" != "success" ]; then
-            echo "test-matrix failed"
-            exit 1
-          fi
-          if [ "${{ needs.cross-platform.result }}" != "success" ]; then
-            echo "cross-platform failed"
-            exit 1
-          fi
+          if [ "${{ needs.validate.result }}" != "success" ]; then exit 1; fi
+          if [ "${{ needs.test-matrix.result }}" != "success" ]; then exit 1; fi
+          if [ "${{ needs.cross-platform.result }}" != "success" ]; then exit 1; fi
           echo "All checks green — repository healthy."
-

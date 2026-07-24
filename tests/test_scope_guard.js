@@ -20,7 +20,7 @@ const code = fs.readFileSync(
   path.join(__dirname, "..", "yt+.user.js"),
   "utf8",
 );
-const lines = code.split("\n");
+const lines = code.split(/\r?\n/);
 
 let passed = 0,
   failed = 0;
@@ -40,7 +40,7 @@ function ok(name, cond) {
 // sharing one name at the outer-IIFE top level (2-space indent).
 function topLevelFunctionDecls(src) {
   const out = [];
-  src.split("\n").forEach((l, i) => {
+  src.split(/\r?\n/).forEach((l, i) => {
     const m = /^  function ([A-Za-z0-9_$]+)\s*\(/.exec(l);
     if (m) out.push([m[1], i + 1]);
   });
@@ -48,7 +48,7 @@ function topLevelFunctionDecls(src) {
 }
 function topLevelSimpleConstDecls(src) {
   const out = [];
-  src.split("\n").forEach((l, i) => {
+  src.split(/\r?\n/).forEach((l, i) => {
     const m = /^  (const|let) ([A-Za-z0-9_$]+)\s*=/.exec(l);
     if (m) out.push([m[2], i + 1]);
   });
@@ -102,8 +102,9 @@ for (const [name, sig] of Object.entries(renames))
      code.split(sig).length - 1 === 1);
 
 // --------------------------------------------------- call-site wiring
+// CRLF-safe: allow \r?\n after {
 ok("CC state reader used by Cc_apply body",
-   /function Cc_apply\(\) \{\n[\s\S]{0,200}?Cc_state\(\)/.test(code));
+   /function Cc_apply\(\)\s*\{\r?\n[\s\S]{0,200}?Cc_state\(\)/.test(code));
 ok("CC verify interval uses Cc_state()",
    /Ma\.lastVerifyFix[\s\S]{0,600}?Cc_state\(\)|Cc_state\(\)[\s\S]{0,600}?Ma\.lastVerifyFix/.test(code));
 ok("cfg.changed handler calls Cc_apply()",

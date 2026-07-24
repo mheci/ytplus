@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.21.0
-// @description  YT+ makes YouTube yours: kill ads, clutter, and telemetry; add SponsorBlock, themes, screenshots, keyboard control, session history, and 120+ opt-in features. 100% local. v3.0.21.0: maintenance release — repository slimmed to the essentials (script, README, license); script icon now served from GitHub Releases. No functional changes. Full notes in the GitHub release.
+// @version      3.0.21.1
+// @description  YT+ makes YouTube yours: kill ads, clutter, and telemetry; add SponsorBlock, themes, screenshots, keyboard control, session history, and 120+ opt-in features. 100% local. v3.0.21.1: bugfix — channel handle parsing for per-channel speed/SB/notes (was 'channel' for /channel/ URLs), screenshot clipboard null-blob handling with download fallback, and cross-platform CI hardening.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus
@@ -708,7 +708,7 @@
       ("undefined" != typeof GM_info &&
         GM_info.script &&
         GM_info.script.version) ||
-      "3.0.21.0",
+      "3.0.21.1",
     r = "https://sponsor.ajay.app",
     o = (() => {
       try {
@@ -2077,15 +2077,27 @@
     Ie = () => w("history", "lw", "prev"),
     Re = () => C("history");
   function Ne() {
+    // v3.0.21.1 fix: original implementation returned only the first
+    // path segment, so "/channel/UCxyz" produced "channel" (colliding
+    // all non-handle channels into one bucket). That broke per-channel
+    // speed memory, SB channel overrides, session-history channelId and
+    // notes for any channel without an @handle. The new impl mirrors
+    // Cb_norm's parsing: @handle (preserved with @), /channel|/c|/user/ID,
+    // then fallback to first segment. Handle is lowercased to avoid
+    // case-duplicate keys (consistent with Cb_norm).
     try {
       const e = document.querySelector(
         "ytd-video-owner-renderer ytd-channel-name a, #owner-name a, ytd-channel-name a, #channel-name a",
       );
       if (e && e.href) {
-        const t = new URL(e.href, location.href).pathname
-          .split("/")
-          .filter(Boolean);
-        if (t[0]) return t[0];
+        const u = new URL(e.href, location.href);
+        const p = u.pathname;
+        let m = p.match(/\/@([^/?#]+)/);
+        if (m && m[1]) return "@" + m[1].toLowerCase();
+        m = p.match(/\/(?:channel|c|user)\/([^/?#]+)/i);
+        if (m && m[1]) return m[1];
+        const parts = p.split("/").filter(Boolean);
+        if (parts[0]) return parts[0];
       }
     } catch (e) {}
     try {
@@ -6560,11 +6572,25 @@
           r = n ? "jpg" : "png",
           o = n ? "image/jpeg" : "image/png",
           i = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+        const doDownload = () => {
+          try {
+            const d = document.createElement("a");
+            ((d.href = a.toDataURL(o, 0.95)),
+              (d.download = "ytplus-" + i + "." + r),
+              document.body.appendChild(d),
+              d.click(),
+              d.remove(),
+              pe("Saved " + a.width + "x" + a.height, 1800, "success"));
+          } catch (e2) {
+            pe("Can’t take a screenshot of this video.", 1800, "error");
+          }
+        };
         // v3.0.20.0: optional copy-to-clipboard path. The browser's
         // ClipboardItem accepts a Blob promise, so we hand it toBlob()
         // directly and skip the synchronous toDataURL entirely (which
         // is also the call that throws a taint SecurityError for the
         // rare non-MSE playback path).
+        // v3.0.21.1: handle null blob (tainted canvas) and fallback to download.
         if (
           S.screenshotClipboard &&
           "undefined" != typeof ClipboardItem &&
@@ -6572,25 +6598,25 @@
           "function" == typeof navigator.clipboard.write
         ) {
           try {
-            const blobP = new Promise((res) => a.toBlob(res, o, 0.95));
+            const blobP = new Promise((res, rej) =>
+              a.toBlob((b) => (b ? res(b) : rej(new Error("empty blob"))), o, 0.95),
+            );
             navigator.clipboard
               .write([new ClipboardItem({ [o]: blobP })])
               .then(
                 () => pe("Screenshot copied to clipboard", 1800, "success"),
-                () => pe("Clipboard write failed - download it instead?", 2000, "error"),
+                () => {
+                  pe("Clipboard write failed - downloading instead", 2000, "error");
+                  doDownload();
+                },
               );
           } catch (e) {
-            pe("Clipboard unavailable for screenshots.", 1800, "error");
+            pe("Clipboard unavailable - downloading instead", 1800, "error");
+            doDownload();
           }
           return;
         }
-        const d = document.createElement("a");
-        ((d.href = a.toDataURL(o, 0.95)),
-          (d.download = "ytplus-" + i + "." + r),
-          document.body.appendChild(d),
-          d.click(),
-          d.remove(),
-          pe("Saved " + a.width + "x" + a.height, 1800, "success"));
+        doDownload();
       } catch (e) {
         pe("Can’t take a screenshot of this video.", 1800, "error");
       }

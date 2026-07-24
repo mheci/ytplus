@@ -4,7 +4,7 @@
 
 **Make YouTube yours.** A single userscript that kills ads, clutter, and telemetry, adds powerful theming, SponsorBlock, screenshots, keyboard control, session history, and more.
 
-[![Version](https://img.shields.io/badge/version-3.0.21.0-ff3d7f)](https://github.com/mheci/ytplus/releases/latest)
+[![Version](https://img.shields.io/badge/version-3.0.21.1-ff3d7f)](https://github.com/mheci/ytplus/releases/latest)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Userscript](https://img.shields.io/badge/install-userscript-orange)](https://github.com/mheci/ytplus/releases/latest/download/yt%2B.user.js)
 [![CI](https://github.com/mheci/ytplus/actions/workflows/ci.yml/badge.svg)](https://github.com/mheci/ytplus/actions/workflows/ci.yml)
@@ -15,10 +15,16 @@
 
 ---
 
+## What's New in v3.0.21.1
+
+- **Channel parsing fix** — `Ne()` (used by per-channel speed memory, SponsorBlock channel overrides, session history, and notes) previously returned only the first URL segment, so `/channel/UC...`, `/c/...`, `/user/...` all collapsed to the literal `"channel"` / `"c"` / `"user"` and shared a single bucket. Now parses `@handle`, `/channel/ID`, `/c/Name`, `/user/Name` correctly (mirroring `Cb_norm`), lowercasing handles to avoid case duplicates.
+- **Screenshot clipboard robustness** — `toBlob` may return `null` on tainted canvases; now rejects and falls back to download with proper error toasts instead of silently failing.
+- **CI & QA hardening** — Node matrix fixed to `20,22` (jsdom 29 requires Node >=20.19), `.gitattributes` enforces LF, `test_scope_guard` is CRLF-safe, and new regression guards for channel parsing added. All 9 suites green on Ubuntu/Windows/macOS.
+
 ## What's New in v3.0.21.0
 
-- **Packaging slim-down** — the script `@icon` is now served from the GitHub release assets (`releases/latest/download/icon.png`) instead of the repo tree, reducing clone size and aligning with the release-CDN distribution model. No functional changes to playback, blocking, or UI.
-- **CI & QA hardening** — full test matrix (9 jsdom suites, 324+ checks) with scope-collision guard, header/meta lockstep, size sanity, and cross-platform validation (Node 18/20/22, Ubuntu/Windows/macOS) now runs on every push/PR.
+- **Packaging slim-down** — the script `@icon` is now served from the GitHub release assets (`releases/latest/download/icon.png`) instead of the repo tree, reducing clone size and aligning with the release-CDN distribution model.
+- **CI & QA hardening** — full test matrix (9 jsdom suites, 324+ checks) with scope-collision guard, header/meta lockstep, size sanity, and cross-platform validation (Node 20/22, Ubuntu/Windows/macOS) now runs on every push/PR.
 
 ## What's New in v3.0.20.0
 

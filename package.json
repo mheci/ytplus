@@ -1,6 +1,6 @@
 {
   "name": "ytplus",
-  "version": "3.0.21.0",
+  "version": "3.0.21.1",
   "private": true,
   "description": "YT+ userscript QA harness (tests only - the product is yt+.user.js, a zero-dependency single file)",
   "scripts": {

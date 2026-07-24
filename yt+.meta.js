@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YT+
 // @namespace    https://github.com/mheci/ytplus
-// @version      3.0.21.0
-// @description  YT+ makes YouTube yours: kill ads, clutter, and telemetry; add SponsorBlock, themes, screenshots, keyboard control, session history, and 120+ opt-in features. 100% local. v3.0.21.0: maintenance release — repository slimmed to the essentials (script, README, license); script icon now served from GitHub Releases. No functional changes. Full notes in the GitHub release.
+// @version      3.0.21.1
+// @description  YT+ makes YouTube yours: kill ads, clutter, and telemetry; add SponsorBlock, themes, screenshots, keyboard control, session history, and 120+ opt-in features. 100% local. v3.0.21.1: bugfix — channel handle parsing for per-channel speed/SB/notes (was 'channel' for /channel/ URLs), screenshot clipboard null-blob handling with download fallback, and cross-platform CI hardening.
 // @author       YT+ Team
 // @license      GPL-3.0-or-later
 // @homepageURL  https://github.com/mheci/ytplus

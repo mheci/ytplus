@@ -6,6 +6,28 @@ For the user-facing release notes and the README, see [README.md](README.md).
 
 ---
 
+## [3.0.21.1] - 2026-07-24
+
+### Fixed
+
+- **Channel parsing (`Ne()`)** — used by per-channel speed memory, SponsorBlock per-channel overrides, session history `channelId`, and channel/user notes. The old impl did `pathname.split('/').filter(Boolean)[0]`, so `/channel/UCxyz` → `"channel"` (all non-handle channels collided into one bucket). Now parses:
+  - `/@handle` → `@handle` lowercased
+  - `/channel/ID`, `/c/Name`, `/user/Name` → ID/Name
+  - Fallback: first segment, then `ytInitialPlayerResponse.videoDetails.channelId`, then `meta[channelId]`
+  This fixes per-channel speed memory corruption where `/channel/` channels all shared the same speed, and SB per-channel rules never matched.
+- **Screenshot clipboard** — `canvas.toBlob` can return `null` (tainted canvas, empty canvas). Previously `new Promise(res => toBlob(res))` resolved with `null`, then `ClipboardItem({[mime]: Promise<null>})` caused `clipboard.write` to reject with no fallback — user got an error toast and no file. Now:
+  - `toBlob` callback rejects on `null` (`empty blob`)
+  - `clipboard.write` rejection falls back to the download path (`toDataURL` + anchor click)
+  - Added `doDownload()` helper so both paths share the same download logic
+
+### Changed
+
+- **Version bump** — `yt+.user.js` 3.0.21.0 → 3.0.21.1, `yt+.meta.js` regenerated verbatim, `package.json` 3.0.21.1
+- **Tests** — `test_features.js` clipboard check now tolerates new Promise shape, added null-blob guard, added `CHANNEL PARSING (v3.0.21.1)` regression block (4 checks); `test_scope_guard.js` CRLF-safe
+- **CI** — matrix fixed to Node 20,22 (jsdom 29 requires >=20.19.0), `fail-fast:false`, `.gitattributes` LF enforcement
+
+---
+
 ## [3.0.21.0] - 2026-07-23
 
 ### Changed
